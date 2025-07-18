@@ -528,3 +528,90 @@ MIT License - see `LICENSE` file for details.
 <img width="810" alt="Calendar Management" src="https://github.com/user-attachments/assets/d3c2a834-fcca-4dc5-8990-6d6dc1d96048" />
 <img width="842" alt="Batch Emails" src="https://github.com/user-attachments/assets/0876c789-7bcc-4414-a144-6c3f0aaffc06" />
 </div>
+
+#### Non-Interactive (Service) Deployments – pre-issued tokens
+
+For server environments where **interactive OAuth is impossible** (e.g. headless containers or remote agents) you can inject a long-lived refresh token at launch time.  
+Set these additional variables **in addition to** your client ID/secret:
+
+| Variable | Purpose |
+|----------|---------|
+| `GOOGLE_OAUTH_ACCESS_TOKEN` | Current access token (will auto-refresh when expired) |
+| `GOOGLE_OAUTH_REFRESH_TOKEN` | Refresh token obtained during an interactive OAuth grant **once** |
+
+Optional overrides:
+
+| Variable | Purpose |
+|----------|---------|
+| `GOOGLE_OAUTH_TOKEN_URI` | Custom token endpoint (defaults to Google) |
+| `GOOGLE_OAUTH_SCOPES` | Comma-separated scopes attached to the tokens (if omitted the MCP will assume the scopes requested by each tool) |
+| `GOOGLE_OAUTH_EXPIRY` | ISO/RFC3339 timestamp when the access token expires – purely informational; if omitted the SDK will refresh automatically on first 401 |
+
+Example (Dockerfile or CI):
+```bash
+export GOOGLE_OAUTH_CLIENT_ID="xxxx.apps.googleusercontent.com"
+export GOOGLE_OAUTH_CLIENT_SECRET="yyyy"
+export GOOGLE_OAUTH_ACCESS_TOKEN="ya29.a0AX…"
+export GOOGLE_OAUTH_REFRESH_TOKEN="1//0gabcdef…"
+uv run main.py
+```
+
+When these variables are present the MCP **skips all browser-based authentication flows** and immediately uses the supplied credentials for every session.
+
+##### Obtaining your refresh & access tokens (one-time setup)
+
+If you don’t already have a `GOOGLE_OAUTH_REFRESH_TOKEN`, follow these manual steps once:
+
+1. **Build an authorization URL** (replace the placeholders):
+
+```
+https://accounts.google.com/o/oauth2/v2/auth?client_id=<YOUR_CLIENT_ID>&redirect_uri=<YOUR_REDIRECT_URI>&response_type=code&scope=openid%20https://www.googleapis.com/auth/userinfo.email%20https://www.googleapis.com/auth/calendar.readonly%20https://www.googleapis.com/auth/calendar.events%20https://www.googleapis.com/auth/drive.readonly%20https://www.googleapis.com/auth/drive.file%20https://www.googleapis.com/auth/documents.readonly%20https://www.googleapis.com/auth/documents%20https://www.googleapis.com/auth/gmail.readonly%20https://www.googleapis.com/auth/gmail.send%20https://www.googleapis.com/auth/gmail.compose%20https://www.googleapis.com/auth/gmail.modify%20https://www.googleapis.com/auth/gmail.labels%20https://www.googleapis.com/auth/chat.messages.readonly%20https://www.googleapis.com/auth/chat.messages%20https://www.googleapis.com/auth/chat.spaces%20https://www.googleapis.com/auth/spreadsheets.readonly%20https://www.googleapis.com/auth/spreadsheets%20https://www.googleapis.com/auth/forms.body%20https://www.googleapis.com/auth/forms.body.readonly%20https://www.googleapis.com/auth/forms.responses.readonly%20https://www.googleapis.com/auth/presentations%20https://www.googleapis.com/auth/presentations.readonly%20https://www.googleapis.com/auth/tasks%20https://www.googleapis.com/auth/tasks.readonly&access_type=offline&prompt=consent
+```
+
+• `<YOUR_CLIENT_ID>` – value from Google Cloud console  
+• `<YOUR_REDIRECT_URI>` – must exactly match one of the URIs configured in the OAuth credential (e.g. `http://localhost:8000/oauth2callback`)
+
+Open the URL in a browser, choose the Google account, and *Allow* all requested permissions. Google will redirect back to `redirect_uri` with `?code=AUTH_CODE` in the query string.
+
+2. **Exchange the code for tokens** *(only once)*:
+
+```bash
+curl -X POST https://oauth2.googleapis.com/token \
+  -d client_id=<YOUR_CLIENT_ID> \
+  -d client_secret=<YOUR_CLIENT_SECRET> \
+  -d code=<AUTH_CODE_FROM_STEP_1> \
+  -d grant_type=authorization_code \
+  -d redirect_uri=<YOUR_REDIRECT_URI>
+```
+
+The JSON response contains `access_token`, `refresh_token`, and `expires_in`.
+
+Save **both** tokens as environment variables (`GOOGLE_OAUTH_ACCESS_TOKEN`, `GOOGLE_OAUTH_REFRESH_TOKEN`).  
+The `access_token` will auto-refresh when it expires as long as the `refresh_token` is valid.
+
+👉 **Tip:** You can also use Google’s [OAuth 2.0 Playground](https://developers.google.com/oauthplayground/) to perform these steps via a UI – just remember to tick *Use your own OAuth credentials* and enter your client ID & secret.
+
+##### Quick authorization link for the bundled demo client
+
+If you’re evaluating with the sample client ID used in this repo, the full URL is ready-made — just open it, pick your Google account, grant access, and grab the code/tokens:
+
+```
+https://accounts.google.com/o/oauth2/v2/auth?client_id=333437725100-fkatvvanoa1o7lt9kfbb6ievgpkslroi.apps.googleusercontent.com&redirect_uri=https://polletask-dev.web.app/integrations/google-calendar/create&response_type=code&access_type=offline&prompt=select_account%20consent&scope=openid%20https://www.googleapis.com/auth/userinfo.email%20https://www.googleapis.com/auth/calendar.readonly%20https://www.googleapis.com/auth/calendar.events%20https://www.googleapis.com/auth/drive.readonly%20https://www.googleapis.com/auth/drive.file%20https://www.googleapis.com/auth/documents.readonly%20https://www.googleapis.com/auth/documents%20https://www.googleapis.com/auth/gmail.readonly%20https://www.googleapis.com/auth/gmail.send%20https://www.googleapis.com/auth/gmail.compose%20https://www.googleapis.com/auth/gmail.modify%20https://www.googleapis.com/auth/gmail.labels%20https://www.googleapis.com/auth/chat.messages.readonly%20https://www.googleapis.com/auth/chat.messages%20https://www.googleapis.com/auth/chat.spaces%20https://www.googleapis.com/auth/spreadsheets.readonly%20https://www.googleapis.com/auth/spreadsheets%20https://www.googleapis.com/auth/forms.body%20https://www.googleapis.com/auth/forms.body.readonly%20https://www.googleapis.com/auth/forms.responses.readonly%20https://www.googleapis.com/auth/presentations%20https://www.googleapis.com/auth/presentations.readonly%20https://www.googleapis.com/auth/tasks%20https://www.googleapis.com/auth/tasks.readonly
+```
+
+##### Starting the server with CLI flags (preferred)
+
+You can now launch the MCP without exporting environment variables:
+
+```bash
+uv run main.py \
+  --transport streamable-http \
+  --single-user \
+  --client-id "<CLIENT_ID>" \
+  --client-secret "<CLIENT_SECRET>" \
+  --access-token "<ACCESS_TOKEN>" \
+  --refresh-token "<REFRESH_TOKEN>" \
+  --redirect-uri "<OPTIONAL_REDIRECT_URI>"
+```
+
+Any flag you pass is internally mapped to the corresponding environment variable for backward-compatible auth logic.

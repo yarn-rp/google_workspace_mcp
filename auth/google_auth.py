@@ -40,10 +40,6 @@ def get_default_credentials_dir():
 
 DEFAULT_CREDENTIALS_DIR = get_default_credentials_dir()
 
-# In-memory cache for session credentials, maps session_id to Credentials object
-# This is brittle and bad, but our options are limited with Claude in present state.
-# This should be more robust in a production system once OAuth2.1 is implemented in client.
-_SESSION_CREDENTIALS_CACHE: Dict[str, Credentials] = {}
 # Centralized Client Secrets Path Logic
 _client_secrets_env = os.getenv("GOOGLE_CLIENT_SECRET_PATH") or os.getenv(
     "GOOGLE_CLIENT_SECRETS"
@@ -138,12 +134,6 @@ def save_credentials_to_file(
         raise
 
 
-def save_credentials_to_session(session_id: str, credentials: Credentials):
-    """Saves user credentials to the in-memory session cache."""
-    _SESSION_CREDENTIALS_CACHE[session_id] = credentials
-    logger.debug(f"Credentials saved to session cache for session_id: {session_id}")
-
-
 def load_credentials_from_file(
     user_google_email: str, base_dir: str = DEFAULT_CREDENTIALS_DIR
 ) -> Optional[Credentials]:
@@ -187,20 +177,6 @@ def load_credentials_from_file(
             f"Error loading or parsing credentials for user {user_google_email} from {creds_path}: {e}"
         )
         return None
-
-
-def load_credentials_from_session(session_id: str) -> Optional[Credentials]:
-    """Loads user credentials from the in-memory session cache."""
-    credentials = _SESSION_CREDENTIALS_CACHE.get(session_id)
-    if credentials:
-        logger.debug(
-            f"Credentials loaded from session cache for session_id: {session_id}"
-        )
-    else:
-        logger.debug(
-            f"No credentials found in session cache for session_id: {session_id}"
-        )
-    return credentials
 
 
 def load_client_secrets_from_env() -> Optional[Dict[str, Any]]:
@@ -521,7 +497,8 @@ def handle_auth_callback(
 
         # If session_id is provided, also save to session cache
         if session_id:
-            save_credentials_to_session(session_id, credentials)
+            # session cache removed – nothing to update
+            pass
 
         return user_google_email, credentials
 
@@ -589,14 +566,8 @@ def get_credentials(
             f"[get_credentials] Called for user_google_email: '{user_google_email}', session_id: '{session_id}', required_scopes: {required_scopes}"
         )
 
-        if session_id:
-            credentials = load_credentials_from_session(session_id)
-            if credentials:
-                logger.debug(
-                    f"[get_credentials] Loaded credentials from session for session_id '{session_id}'."
-                )
-
-        if not credentials and user_google_email:
+        # Attempt file-based creds
+        if user_google_email:
             logger.debug(
                 f"[get_credentials] No session credentials, trying file for user_google_email '{user_google_email}'."
             )
@@ -607,9 +578,7 @@ def get_credentials(
                 logger.debug(
                     f"[get_credentials] Loaded from file for user '{user_google_email}', caching to session '{session_id}'."
                 )
-                save_credentials_to_session(
-                    session_id, credentials
-                )  # Cache for current session
+                # session cache removed – nothing to update
 
         if not credentials:
             logger.info(
@@ -661,7 +630,8 @@ def get_credentials(
                     user_google_email, credentials, credentials_base_dir
                 )
             if session_id:  # Update session cache if it was the source or is active
-                save_credentials_to_session(session_id, credentials)
+                # session cache removed – nothing to update
+                pass
             return credentials
         except RefreshError as e:
             logger.warning(
@@ -701,6 +671,76 @@ def get_user_info(credentials: Credentials) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Unexpected error fetching user info: {e}")
         return None
+
+
+# --- NEW: Environment-based Credentials Loader ---
+
+
+def _load_credentials_from_env(required_scopes: List[str]) -> Optional[Credentials]:
+    """Create a ``google.oauth2.credentials.Credentials`` instance from environment variables.
+
+    This enables fully non-interactive authentication – useful when the MCP is run
+    in a headless or server environment where the OAuth flow cannot be completed
+    by a human user.
+
+    Expected environment variables (all **must** be provided):
+        GOOGLE_OAUTH_ACCESS_TOKEN   – Current access token
+        GOOGLE_OAUTH_REFRESH_TOKEN – Long-lived refresh token
+        GOOGLE_OAUTH_CLIENT_ID     – OAuth 2.0 client ID
+        GOOGLE_OAUTH_CLIENT_SECRET – OAuth 2.0 client secret
+
+    Optional environment variables:
+        GOOGLE_OAUTH_TOKEN_URI     – Token endpoint (defaults to Google standard)
+        GOOGLE_OAUTH_SCOPES        – Comma-separated list of scopes attached to the
+                                      provided tokens. If omitted, ``required_scopes``
+                                      will be used so that downstream checks pass.
+        GOOGLE_OAUTH_EXPIRY        – RFC3339/ISO formatted expiry timestamp of the
+                                      *access* token. If omitted we assume the token
+                                      is currently valid and rely on the refresh
+                                      token for renewal when required.
+
+    Returns:
+        Credentials instance **or** ``None`` if the minimum set of variables is
+        not present.
+    """
+    access_token = os.getenv("GOOGLE_OAUTH_ACCESS_TOKEN") or os.getenv("GOOGLE_ACCESS_TOKEN")
+    refresh_token = os.getenv("GOOGLE_OAUTH_REFRESH_TOKEN") or os.getenv("GOOGLE_REFRESH_TOKEN")
+    client_id = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
+    client_secret = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
+
+    # Abort early if mandatory details are missing
+    if not all([access_token, refresh_token, client_id, client_secret]):
+        return None
+
+    token_uri = os.getenv("GOOGLE_OAUTH_TOKEN_URI", "https://oauth2.googleapis.com/token")
+
+    # Determine scopes attached to the credentials
+    scopes_env = os.getenv("GOOGLE_OAUTH_SCOPES")
+    if scopes_env:
+        scopes_list = [s.strip() for s in scopes_env.split(",") if s.strip()]
+    else:
+        scopes_list = required_scopes  # best effort – pass through what the caller needs
+
+    # Parse optional expiry
+    expiry_str = os.getenv("GOOGLE_OAUTH_EXPIRY")
+    expiry_dt = None
+    if expiry_str:
+        try:
+            expiry_dt = datetime.fromisoformat(expiry_str)
+        except ValueError:
+            logger.warning("GOOGLE_OAUTH_EXPIRY is not a valid ISO/RFC3339 timestamp – ignoring.")
+
+    logger.info("Loaded Google credentials from environment variables – using non-interactive auth path.")
+
+    return Credentials(
+        token=access_token,
+        refresh_token=refresh_token,
+        token_uri=token_uri,
+        client_id=client_id,
+        client_secret=client_secret,
+        scopes=scopes_list,
+        expiry=expiry_dt,
+    )
 
 
 # --- Centralized Google Service Authentication ---
@@ -748,38 +788,37 @@ async def get_authenticated_google_service(
         logger.info(f"[{tool_name}] {error_msg}")
         raise GoogleAuthenticationError(error_msg)
 
-    credentials = await asyncio.to_thread(
-        get_credentials,
-        user_google_email=user_google_email,
-        required_scopes=required_scopes,
-        client_secrets_path=CONFIG_CLIENT_SECRETS_PATH,
-        session_id=None,  # Session ID not available in service layer
-    )
+    # Try to load credentials from environment variables first
+    credentials = _load_credentials_from_env(required_scopes)
 
+    # If no environment credentials, fall back to stored credentials logic
+    if not credentials:
+        credentials = await asyncio.to_thread(
+            get_credentials,
+            user_google_email=user_google_email,
+            required_scopes=required_scopes,
+            client_secrets_path=CONFIG_CLIENT_SECRETS_PATH,
+            session_id=None,
+        )
+
+    # If still no credentials or invalid, initiate interactive auth flow
     if not credentials or not credentials.valid:
         logger.warning(
-            f"[{tool_name}] No valid credentials. Email: '{user_google_email}'."
-        )
-        logger.info(
-            f"[{tool_name}] Valid email '{user_google_email}' provided, initiating auth flow."
+            f"[{tool_name}] No valid credentials available for '{user_google_email}'. Initiating OAuth flow."
         )
 
         # Import here to avoid circular import
         from core.server import get_oauth_redirect_uri_for_current_mode
 
-        # Ensure OAuth callback is available
         redirect_uri = get_oauth_redirect_uri_for_current_mode()
-        # Note: We don't know the transport mode here, but the server should have set it
 
-        # Generate auth URL and raise exception with it
         auth_response = await start_auth_flow(
-            mcp_session_id=None,  # Session ID not available in service layer
+            mcp_session_id=None,
             user_google_email=user_google_email,
             service_name=f"Google {service_name.title()}",
             redirect_uri=redirect_uri,
         )
 
-        # Extract the auth URL from the response and raise with it
         raise GoogleAuthenticationError(auth_response)
 
     try:

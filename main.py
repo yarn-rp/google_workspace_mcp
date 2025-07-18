@@ -60,11 +60,34 @@ def main():
                         help='Specify which tools to register. If not provided, all tools are registered.')
     parser.add_argument('--transport', choices=['stdio', 'streamable-http'], default='stdio',
                         help='Transport mode: stdio (default) or streamable-http')
+
+    # --- New CLI options for credentials (replaces manual env-var export) ---
+    parser.add_argument('--access-token', help='Pre-issued Google OAuth access token')
+    parser.add_argument('--refresh-token', help='Long-lived Google OAuth refresh token')
+    parser.add_argument('--client-id', help='Google OAuth client ID')
+    parser.add_argument('--client-secret', help='Google OAuth client secret')
+    parser.add_argument('--token-uri', default='https://oauth2.googleapis.com/token', help='Token endpoint (default: Google)')
+    parser.add_argument('--redirect-uri', help='Override redirect URI used in auth flow')
     args = parser.parse_args()
 
     # Set port and base URI once for reuse throughout the function
     port = int(os.getenv("PORT", os.getenv("WORKSPACE_MCP_PORT", 8000)))
     base_uri = os.getenv("WORKSPACE_MCP_BASE_URI", "http://localhost")
+
+    # Map provided credential args → environment variables expected by auth layer
+    cred_env_map = {
+        'access_token': ('GOOGLE_OAUTH_ACCESS_TOKEN', args.access_token),
+        'refresh_token': ('GOOGLE_OAUTH_REFRESH_TOKEN', args.refresh_token),
+        'client_id': ('GOOGLE_OAUTH_CLIENT_ID', args.client_id),
+        'client_secret': ('GOOGLE_OAUTH_CLIENT_SECRET', args.client_secret),
+        'token_uri': ('GOOGLE_OAUTH_TOKEN_URI', args.token_uri if args.token_uri else None),
+        'redirect_uri': ('GOOGLE_OAUTH_REDIRECT_URI', args.redirect_uri),
+    }
+
+    for key, (env_var, value) in cred_env_map.items():
+        if value:
+            os.environ[env_var] = value
+            logger.debug(f"Credential arg '{key}' mapped → {env_var}")
 
     safe_print("🔧 Google Workspace MCP Server")
     safe_print("=" * 35)
