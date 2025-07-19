@@ -64,41 +64,45 @@ def _find_any_credentials(
     base_dir: str = DEFAULT_CREDENTIALS_DIR,
 ) -> Optional[Credentials]:
     """
-    Find and load any valid credentials from the credentials directory.
+    Find and load credentials from environment variables.
     Used in single-user mode to bypass session-to-OAuth mapping.
 
     Returns:
-        First valid Credentials object found, or None if none exist.
+        Credentials object from environment variables, or None if not all required vars are set.
     """
-    if not os.path.exists(base_dir):
-        logger.info(f"[single-user] Credentials directory not found: {base_dir}")
+
+    print("IN _find_any_credentials")
+    logger.info("IN _find_any_credentials")
+    # Load credentials from environment variables
+    token = os.getenv("GOOGLE_OAUTH_TOKEN")
+    refresh_token = os.getenv("GOOGLE_OAUTH_REFRESH_TOKEN")
+    token_uri = os.getenv("GOOGLE_OAUTH_TOKEN_URI", "https://oauth2.googleapis.com/token")
+    client_id = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
+    client_secret = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
+    scopes_str = os.getenv("GOOGLE_OAUTH_SCOPES")
+    
+    # Check if all required environment variables are present
+    if not all([token, refresh_token, client_id, client_secret, scopes_str]):
+        logger.info("[single-user] Not all required OAuth environment variables are set")
         return None
-
-    # Scan for any .json credential files
-    for filename in os.listdir(base_dir):
-        if filename.endswith(".json"):
-            filepath = os.path.join(base_dir, filename)
-            try:
-                with open(filepath, "r") as f:
-                    creds_data = json.load(f)
-                credentials = Credentials(
-                    token=creds_data.get("token"),
-                    refresh_token=creds_data.get("refresh_token"),
-                    token_uri=creds_data.get("token_uri"),
-                    client_id=creds_data.get("client_id"),
-                    client_secret=creds_data.get("client_secret"),
-                    scopes=creds_data.get("scopes"),
-                )
-                logger.info(f"[single-user] Found credentials in {filepath}")
-                return credentials
-            except (IOError, json.JSONDecodeError, KeyError) as e:
-                logger.warning(
-                    f"[single-user] Error loading credentials from {filepath}: {e}"
-                )
-                continue
-
-    logger.info(f"[single-user] No valid credentials found in {base_dir}")
-    return None
+    
+    # Parse scopes from comma-separated string
+    scopes = [scope.strip() for scope in scopes_str.split(",") if scope.strip()]
+    
+    try:
+        credentials = Credentials(
+            token=token,
+            refresh_token=refresh_token,
+            token_uri=token_uri,
+            client_id=client_id,
+            client_secret=client_secret,
+            scopes=scopes,
+        )
+        logger.info("[single-user] Found credentials from environment variables")
+        return credentials
+    except Exception as e:
+        logger.warning(f"[single-user] Error creating credentials from environment variables: {e}")
+        return None
 
 
 def _get_user_credential_path(
@@ -553,6 +557,8 @@ def get_credentials(
         Valid Credentials object or None.
     """
     # Check for single-user mode
+    print("MCP_SINGLE_USER_MODE", os.getenv("MCP_SINGLE_USER_MODE"))
+    logger.info("MCP_SINGLE_USER_MODE", os.getenv("MCP_SINGLE_USER_MODE"))
     if os.getenv("MCP_SINGLE_USER_MODE") == "1":
         logger.info(
             f"[get_credentials] Single-user mode: bypassing session mapping, finding any credentials"
