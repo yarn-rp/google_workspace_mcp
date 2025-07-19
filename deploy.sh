@@ -35,13 +35,14 @@ docker build --platform linux/amd64 -t "$IMAGE" .
 docker push "$IMAGE"
 
 # ----------------------------------------------------------------------------
-#  Expect a local .env file with the four required variables:
+#  Expect a local .env file with all required OAuth variables:
+#      MCP_SINGLE_USER_MODE
 #      GOOGLE_OAUTH_CLIENT_ID
 #      GOOGLE_OAUTH_CLIENT_SECRET
-#      GOOGLE_OAUTH_ACCESS_TOKEN
+#      GOOGLE_OAUTH_TOKEN (or GOOGLE_OAUTH_ACCESS_TOKEN)
 #      GOOGLE_OAUTH_REFRESH_TOKEN
-#  These are loaded and passed to the container via CLI flags only – no
-#  Secret Manager or env-var wiring required.
+#      GOOGLE_OAUTH_SCOPES
+#  These are loaded and passed to the container as environment variables.
 # ----------------------------------------------------------------------------
 
 if [[ -f .env ]]; then
@@ -53,35 +54,54 @@ else
   exit 1
 fi
 
-echo "▶️  Preparing CLI credential flags"
+echo "▶️  Preparing environment variables for container"
 
 # Verify required variables are set in .env
-for var in GOOGLE_OAUTH_CLIENT_ID GOOGLE_OAUTH_CLIENT_SECRET GOOGLE_OAUTH_ACCESS_TOKEN GOOGLE_OAUTH_REFRESH_TOKEN; do
+for var in MCP_SINGLE_USER_MODE GOOGLE_OAUTH_CLIENT_ID GOOGLE_OAUTH_CLIENT_SECRET GOOGLE_OAUTH_REFRESH_TOKEN GOOGLE_OAUTH_SCOPES; do
   if [[ -z "${!var:-}" ]]; then
     echo "❌  $var is not set in .env" >&2
     exit 1
   fi
 done
 
-# Base CLI args (credentials etc.)
-CLI_ARGS="run,main.py,--transport,streamable-http,--single-user,\
---client-id,$GOOGLE_OAUTH_CLIENT_ID,\
---client-secret,$GOOGLE_OAUTH_CLIENT_SECRET,\
---access-token,$GOOGLE_OAUTH_ACCESS_TOKEN,\
---refresh-token,$GOOGLE_OAUTH_REFRESH_TOKEN,\
---tools,gmail,calendar,docs"
+# Check for either GOOGLE_OAUTH_TOKEN or GOOGLE_OAUTH_ACCESS_TOKEN
+if [[ -z "${GOOGLE_OAUTH_TOKEN:-}" && -z "${GOOGLE_OAUTH_ACCESS_TOKEN:-}" ]]; then
+  echo "❌  Either GOOGLE_OAUTH_TOKEN or GOOGLE_OAUTH_ACCESS_TOKEN must be set in .env" >&2
+  exit 1
+fi
 
-echo "▶️  Deploying with tool subset: gmail, calendar, docs"
+# Use GOOGLE_OAUTH_TOKEN if available, otherwise use GOOGLE_OAUTH_ACCESS_TOKEN
+if [[ -n "${GOOGLE_OAUTH_TOKEN:-}" ]]; then
+  ACCESS_TOKEN="$GOOGLE_OAUTH_TOKEN"
+else
+  ACCESS_TOKEN="$GOOGLE_OAUTH_ACCESS_TOKEN"
+fi
 
-echo "▶️  Deploying to Cloud Run (CLI flags)"
+echo "▶️  Creating temporary environment variables file"
+# Create a temporary env file for gcloud in YAML format
+TEMP_ENV_FILE=$(mktemp)
+cat > "$TEMP_ENV_FILE" << EOF
+MCP_SINGLE_USER_MODE: "$MCP_SINGLE_USER_MODE"
+GOOGLE_OAUTH_CLIENT_ID: "$GOOGLE_OAUTH_CLIENT_ID"
+GOOGLE_OAUTH_CLIENT_SECRET: "$GOOGLE_OAUTH_CLIENT_SECRET"
+GOOGLE_OAUTH_TOKEN: "$ACCESS_TOKEN"
+GOOGLE_OAUTH_REFRESH_TOKEN: "$GOOGLE_OAUTH_REFRESH_TOKEN"
+GOOGLE_OAUTH_SCOPES: "$GOOGLE_OAUTH_SCOPES"
+EOF
+
+echo "▶️  Deploying to Cloud Run (environment variables file)"
 gcloud run deploy "$SERVICE" \
   --image "$IMAGE" \
   --region "$REGION" \
   --allow-unauthenticated \
   --port 8000 \
   --command "uv" \
-  --args "$CLI_ARGS" \
+  --args "run,main.py,--single-user,--transport,streamable-http,--tools,gmail,calendar,docs" \
+  --env-vars-file "$TEMP_ENV_FILE" \
   --quiet
+
+# Clean up temporary file
+rm "$TEMP_ENV_FILE"
 
 URL=$(gcloud run services describe "$SERVICE" \
       --region "$REGION" --format='value(status.url)')
