@@ -275,11 +275,43 @@ def handle_http_errors(tool_name: str, is_read_only: bool = False):
                             "This is likely a temporary network or certificate issue. Please try again shortly."
                         ) from e
                 except HttpError as error:
+                    # Detect authentication/authorization failures (expired or invalid token)
+                    status_code = getattr(error, "status_code", None)
+                    if status_code is None and hasattr(error, "resp"):
+                        status_code = getattr(error.resp, "status", None)
+
+                    if status_code in (401, 403):
+                        logger.warning(
+                            f"Auth error ({status_code}) in {tool_name}: {error}. Attempting automatic token refresh."
+                        )
+
+                        try:
+                            # Perform token refresh (internal helper)
+                            from auth.google_auth import refresh_auth
+
+                            await refresh_auth()
+
+                            # Clear cached service so that upcoming retry will build
+                            # a fresh one using the new access token.
+                            if "user_google_email" in kwargs:
+                                from auth.service_decorator import clear_service_cache
+
+                                clear_service_cache(kwargs["user_google_email"])
+
+                            # Retry the wrapped function on next loop iteration
+                            continue
+                        except Exception as refresh_err:
+                            logger.error(
+                                f"Automatic token refresh failed in {tool_name}: {refresh_err}",
+                                exc_info=True,
+                            )
+                            # If refresh fails, fall through to standard error handling below
+
+                    # Fallback: propagate the error with a user-friendly message
                     user_google_email = kwargs.get("user_google_email", "N/A")
                     message = (
                         f"API error in {tool_name}: {error}. "
-                        f"You might need to re-authenticate for user '{user_google_email}'. "
-                        f"LLM: Try 'start_google_auth' with the user's email and the appropriate service_name."
+                        f"Authentication may have failed for user '{user_google_email}'."
                     )
                     logger.error(message, exc_info=True)
                     raise Exception(message) from error

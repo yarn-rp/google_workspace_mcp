@@ -6,7 +6,7 @@ import jwt
 import logging
 import os
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional, Tuple, Dict, Any
 
 from google.oauth2.credentials import Credentials
@@ -721,14 +721,24 @@ def _load_credentials_from_env(required_scopes: List[str]) -> Optional[Credentia
     else:
         scopes_list = required_scopes  # best effort – pass through what the caller needs
 
-    # Parse optional expiry
+    # Parse optional expiry – if not provided, we purposely mark the access token
+    # as *already expired* so that google-auth's built-in refresh mechanism kicks
+    # in automatically on the very first request. This prevents a stale access
+    # token from triggering an unnecessary interactive OAuth flow.
     expiry_str = os.getenv("GOOGLE_OAUTH_EXPIRY")
-    expiry_dt = None
+    expiry_dt: Optional[datetime] = None
     if expiry_str:
         try:
             expiry_dt = datetime.fromisoformat(expiry_str)
         except ValueError:
             logger.warning("GOOGLE_OAUTH_EXPIRY is not a valid ISO/RFC3339 timestamp – ignoring.")
+    # If no expiry provided, leave it as None. google-auth will automatically
+    # refresh the token on-demand when it receives a 401/invalid_grant response.
+    # Setting an artificial past expiry caused some hosting environments to
+    # attempt an immediate refresh that can fail due to network or quota and
+    # unnecessarily trigger the interactive OAuth flow.
+    else:
+        expiry_dt = None
 
     logger.info("Loaded Google credentials from environment variables – using non-interactive auth path.")
 
@@ -741,6 +751,54 @@ def _load_credentials_from_env(required_scopes: List[str]) -> Optional[Credentia
         scopes=scopes_list,
         expiry=expiry_dt,
     )
+
+
+# --- Internal Token Refresh Helper ---
+
+async def refresh_auth() -> None:
+    """Refresh the OAuth access token using the refresh token provided via environment variables.
+
+    This helper is intended for *internal* use only. It is **not** exposed as an MCP
+    tool.  The function:
+      1. Re-creates a ``Credentials`` instance from the current environment
+         (using ``_load_credentials_from_env``).
+      2. Calls ``credentials.refresh(Request())`` in a thread-pool so that the
+         blocking HTTP request does not block the event-loop.
+      3. Updates the ``GOOGLE_OAUTH_ACCESS_TOKEN`` and ``GOOGLE_OAUTH_EXPIRY``
+         environment variables in-place so that future credential loads (within
+         the same process) benefit from the newly-fetched access token.
+
+    Raises:
+        RuntimeError: If no refreshable credentials can be constructed from the
+                       environment.
+        Exception:     If the refresh operation itself fails for any reason.
+    """
+
+    from auth.scopes import SCOPES  # Imported here to avoid circular imports
+
+    # Step 1: Load credentials from the environment.
+    credentials = _load_credentials_from_env(list(SCOPES))
+    if not credentials or not credentials.refresh_token:
+        raise RuntimeError(
+            "No refreshable Google OAuth credentials found in environment variables."
+        )
+
+    # Step 2: Perform the refresh in a background thread.
+    try:
+        await asyncio.to_thread(credentials.refresh, Request())
+    except Exception as refresh_err:
+        logger.error("Failed to refresh OAuth credentials: %s", refresh_err, exc_info=True)
+        raise
+
+    # Step 3: Persist the fresh access token (and expiry) back into the env so
+    # that subsequent calls that rely on `_load_credentials_from_env` pick up the
+    # new values automatically.
+    if credentials.token:
+        os.environ["GOOGLE_OAUTH_ACCESS_TOKEN"] = credentials.token
+    if credentials.expiry:
+        os.environ["GOOGLE_OAUTH_EXPIRY"] = credentials.expiry.isoformat()
+
+    logger.info("Successfully refreshed access token via refresh_auth().")
 
 
 # --- Centralized Google Service Authentication ---
@@ -801,7 +859,17 @@ async def get_authenticated_google_service(
             session_id=None,
         )
 
-    # If still no credentials or invalid, initiate interactive auth flow
+    # Attempt a silent refresh **before** triggering any interactive auth flow
+    if credentials and not credentials.valid and getattr(credentials, "refresh_token", None):
+        try:
+            logger.info(f"[{tool_name}] Credentials expired – attempting silent refresh using stored refresh token.")
+            await asyncio.to_thread(credentials.refresh, Request())
+            logger.info(f"[{tool_name}] Silent refresh successful.")
+        except RefreshError as refresh_err:
+            logger.warning(f"[{tool_name}] Silent refresh failed: {refresh_err}")
+
+    # Re-evaluate validity after potential refresh. If still invalid (or no creds),
+    # fall back to the interactive flow.
     if not credentials or not credentials.valid:
         logger.warning(
             f"[{tool_name}] No valid credentials available for '{user_google_email}'. Initiating OAuth flow."

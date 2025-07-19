@@ -69,7 +69,7 @@ async def list_task_lists(
         return response
 
     except HttpError as error:
-        message = f"API error: {error}. You might need to re-authenticate. LLM: Try 'start_google_auth' with the user's email ({user_google_email}) and service_name='Google Tasks'."
+        message = f"API error: {error}. Credentials may be expired. LLM: Try 'refresh_auth' to refresh the Google credentials, then retry this command."
         logger.error(message, exc_info=True)
         raise Exception(message)
     except Exception as e:
@@ -113,7 +113,7 @@ async def get_task_list(
         return response
 
     except HttpError as error:
-        message = f"API error: {error}. You might need to re-authenticate. LLM: Try 'start_google_auth' with the user's email ({user_google_email}) and service_name='Google Tasks'."
+        message = f"API error: {error}. Credentials may be expired. LLM: Try 'refresh_auth' to refresh the Google credentials, then retry this command."
         logger.error(message, exc_info=True)
         raise Exception(message)
     except Exception as e:
@@ -161,7 +161,7 @@ async def create_task_list(
         return response
 
     except HttpError as error:
-        message = f"API error: {error}. You might need to re-authenticate. LLM: Try 'start_google_auth' with the user's email ({user_google_email}) and service_name='Google Tasks'."
+        message = f"API error: {error}. Credentials may be expired. LLM: Try 'refresh_auth' to refresh the Google credentials, then retry this command."
         logger.error(message, exc_info=True)
         raise Exception(message)
     except Exception as e:
@@ -211,7 +211,7 @@ async def update_task_list(
         return response
 
     except HttpError as error:
-        message = f"API error: {error}. You might need to re-authenticate. LLM: Try 'start_google_auth' with the user's email ({user_google_email}) and service_name='Google Tasks'."
+        message = f"API error: {error}. Credentials may be expired. LLM: Try 'refresh_auth' to refresh the Google credentials, then retry this command."
         logger.error(message, exc_info=True)
         raise Exception(message)
     except Exception as e:
@@ -251,7 +251,7 @@ async def delete_task_list(
         return response
 
     except HttpError as error:
-        message = f"API error: {error}. You might need to re-authenticate. LLM: Try 'start_google_auth' with the user's email ({user_google_email}) and service_name='Google Tasks'."
+        message = f"API error: {error}. Credentials may be expired. LLM: Try 'refresh_auth' to refresh the Google credentials, then retry this command."
         logger.error(message, exc_info=True)
         raise Exception(message)
     except Exception as e:
@@ -357,7 +357,7 @@ async def list_tasks(
         return response
 
     except HttpError as error:
-        message = f"API error: {error}. You might need to re-authenticate. LLM: Try 'start_google_auth' with the user's email ({user_google_email}) and service_name='Google Tasks'."
+        message = f"API error: {error}. Credentials may be expired. LLM: Try 'refresh_auth' to refresh the Google credentials, then retry this command."
         logger.error(message, exc_info=True)
         raise Exception(message)
     except Exception as e:
@@ -418,7 +418,7 @@ async def get_task(
         return response
 
     except HttpError as error:
-        message = f"API error: {error}. You might need to re-authenticate. LLM: Try 'start_google_auth' with the user's email ({user_google_email}) and service_name='Google Tasks'."
+        message = f"API error: {error}. Credentials may be expired. LLM: Try 'refresh_auth' to refresh the Google credentials, then retry this command."
         logger.error(message, exc_info=True)
         raise Exception(message)
     except Exception as e:
@@ -493,7 +493,7 @@ async def create_task(
         return response
 
     except HttpError as error:
-        message = f"API error: {error}. You might need to re-authenticate. LLM: Try 'start_google_auth' with the user's email ({user_google_email}) and service_name='Google Tasks'."
+        message = f"API error: {error}. Credentials may be expired. LLM: Try 'refresh_auth' to refresh the Google credentials, then retry this command."
         logger.error(message, exc_info=True)
         raise Exception(message)
     except Exception as e:
@@ -575,7 +575,7 @@ async def update_task(
         return response
 
     except HttpError as error:
-        message = f"API error: {error}. You might need to re-authenticate. LLM: Try 'start_google_auth' with the user's email ({user_google_email}) and service_name='Google Tasks'."
+        message = f"API error: {error}. Credentials may be expired. LLM: Try 'refresh_auth' to refresh the Google credentials, then retry this command."
         logger.error(message, exc_info=True)
         raise Exception(message)
     except Exception as e:
@@ -617,7 +617,7 @@ async def delete_task(
         return response
 
     except HttpError as error:
-        message = f"API error: {error}. You might need to re-authenticate. LLM: Try 'start_google_auth' with the user's email ({user_google_email}) and service_name='Google Tasks'."
+        message = f"API error: {error}. Credentials may be expired. LLM: Try 'refresh_auth' to refresh the Google credentials, then retry this command."
         logger.error(message, exc_info=True)
         raise Exception(message)
     except Exception as e:
@@ -696,7 +696,7 @@ async def move_task(
         return response
 
     except HttpError as error:
-        message = f"API error: {error}. You might need to re-authenticate. LLM: Try 'start_google_auth' with the user's email ({user_google_email}) and service_name='Google Tasks'."
+        message = f"API error: {error}. Credentials may be expired. LLM: Try 'refresh_auth' to refresh the Google credentials, then retry this command."
         logger.error(message, exc_info=True)
         raise Exception(message)
     except Exception as e:
@@ -736,7 +736,7 @@ async def clear_completed_tasks(
         return response
 
     except HttpError as error:
-        message = f"API error: {error}. You might need to re-authenticate. LLM: Try 'start_google_auth' with the user's email ({user_google_email}) and service_name='Google Tasks'."
+        message = f"API error: {error}. Credentials may be expired. LLM: Try 'refresh_auth' to refresh the Google credentials, then retry this command."
         logger.error(message, exc_info=True)
         raise Exception(message)
     except Exception as e:

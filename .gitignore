@@ -9,6 +9,7 @@ build/
 dist/
 
 # ---- Environments & tooling -------------------------------------------
+### Ignore env file for credentials
 .env
 .venv/
 venv/
