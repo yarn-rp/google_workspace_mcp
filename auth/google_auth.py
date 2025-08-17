@@ -807,6 +807,81 @@ async def refresh_auth() -> None:
     logger.info("Successfully refreshed access token via refresh_auth().")
 
 
+# --- Header-based Authentication ---
+
+def _get_access_token_from_headers() -> Optional[str]:
+    """
+    Extract the access token from request headers or get it from Firebase using Blueprint Agent ID.
+    
+    This function tries multiple approaches:
+    1. Check context variables (set by middleware)
+    2. Look for Blueprint Agent ID in environment/context and fetch token from Firebase
+    3. Look for direct access token headers (legacy)
+    
+    Returns:
+        The access token string if found, None otherwise.
+    """
+    # Check if token is available in context vars (set by middleware)
+    from core.context import get_injected_oauth_credentials
+    injected_creds = get_injected_oauth_credentials()
+    if injected_creds and isinstance(injected_creds, dict):
+        access_token = injected_creds.get('access_token')
+        if access_token:
+            logger.debug("Found access token in injected credentials context")
+            return access_token
+    
+    # Try to get Blueprint Agent ID from environment or context
+    # This is a fallback for when middleware doesn't run (MCP protocol)
+    agent_id = None
+    
+    # Check environment variables (can be set by MCP client)
+    agent_id = os.getenv('X_BLUEPRINT_AGENT_ID') or os.getenv('BLUEPRINT_AGENT_ID')
+    
+    if agent_id:
+        logger.info(f"Found Blueprint Agent ID in environment: {agent_id}")
+        try:
+            # Import here to avoid circular imports
+            import asyncio
+            from auth.firebase_service import get_google_access_token_for_agent
+            
+            # Get access token from Firebase
+            access_token = asyncio.run(get_google_access_token_for_agent(agent_id))
+            if access_token:
+                logger.info(f"Successfully retrieved access token from Firebase for agent: {agent_id}")
+                return access_token
+            else:
+                logger.warning(f"No access token found in Firebase for agent: {agent_id}")
+        except Exception as e:
+            logger.error(f"Error getting access token from Firebase for agent {agent_id}: {e}")
+    
+    logger.debug("No access token found in context variables or Firebase")
+    return None
+
+
+def _create_credentials_from_access_token(access_token: str) -> Credentials:
+    """
+    Create a minimal Credentials object from just an access token.
+    
+    Since we're not handling token refresh, we only need the access token.
+    The credentials will be marked as valid but without refresh capability.
+    
+    Args:
+        access_token: The Google OAuth access token
+        
+    Returns:
+        A Credentials object with the access token
+    """
+    return Credentials(
+        token=access_token,
+        refresh_token=None,  # No refresh capability
+        token_uri=None,      # Not needed for non-refreshable tokens
+        client_id=None,      # Not needed for non-refreshable tokens
+        client_secret=None,  # Not needed for non-refreshable tokens
+        scopes=None,         # Will be validated by the API calls themselves
+        expiry=None          # We assume the token is valid
+    )
+
+
 # --- Centralized Google Service Authentication ---
 
 
@@ -823,18 +898,24 @@ async def get_authenticated_google_service(
     version: str,  # "v1", "v3"
     tool_name: str,  # For logging/debugging
     user_google_email: str,  # Required - no more Optional
-    required_scopes: List[str],
+    required_scopes: List[str],  # Note: scopes are no longer validated since token comes pre-authorized
 ) -> tuple[Any, str]:
     """
     Centralized Google service authentication for all MCP tools.
-    Returns (service, user_email) on success or raises GoogleAuthenticationError.
+    Gets credentials from Blueprint agent via Firebase and returns (service, user_email) on success.
+
+    The authentication flow:
+    1. Middleware extracts X-Blueprint-Agent-Id from request headers
+    2. Middleware queries Firebase to get the agent's Google access token
+    3. Middleware sets the access token in request context
+    4. This function retrieves the token from context and creates Google service
 
     Args:
         service_name: The Google service name ("gmail", "calendar", "drive", "docs")
         version: The API version ("v1", "v3", etc.)
         tool_name: The name of the calling tool (for logging/debugging)
         user_google_email: The user's Google email address (required)
-        required_scopes: List of required OAuth scopes
+        required_scopes: List of required OAuth scopes (informational only - not validated)
 
     Returns:
         tuple[service, user_email] on success
@@ -852,71 +933,69 @@ async def get_authenticated_google_service(
         logger.info(f"[{tool_name}] {error_msg}")
         raise GoogleAuthenticationError(error_msg)
 
-    # Try to load credentials from environment variables first
-    credentials = _load_credentials_from_env(required_scopes)
+    # Check if user_google_email contains agent ID pattern (agent_id:email@domain.com)
+    agent_id = None
+    actual_email = user_google_email
+    
+    if ':' in user_google_email and '@' in user_google_email:
+        parts = user_google_email.split(':', 1)
+        if len(parts) == 2:
+            potential_agent_id = parts[0].strip()
+            potential_email = parts[1].strip()
+            # Basic UUID validation (36 chars with hyphens)
+            if len(potential_agent_id) == 36 and potential_agent_id.count('-') == 4 and '@' in potential_email:
+                agent_id = potential_agent_id
+                actual_email = potential_email
+                logger.info(f"[{tool_name}] Extracted agent ID: {agent_id}, email: {actual_email}")
 
-    # If no environment credentials, fall back to stored credentials logic
-    if not credentials:
-        credentials = await asyncio.to_thread(
-            get_credentials,
-            user_google_email=user_google_email,
-            required_scopes=required_scopes,
-            client_secrets_path=CONFIG_CLIENT_SECRETS_PATH,
-            session_id=None,
-        )
-
-    # Attempt a silent refresh **before** triggering any interactive auth flow
-    if credentials and not credentials.valid and getattr(credentials, "refresh_token", None):
+    # Get access token from headers/context first
+    access_token = _get_access_token_from_headers()
+    
+    # If no token in headers/context, try to get it from Firebase using agent ID
+    if not access_token and agent_id:
         try:
-            logger.info(f"[{tool_name}] Credentials expired – attempting silent refresh using stored refresh token.")
-            await asyncio.to_thread(credentials.refresh, Request())
-            logger.info(f"[{tool_name}] Silent refresh successful.")
-        except RefreshError as refresh_err:
-            logger.warning(f"[{tool_name}] Silent refresh failed: {refresh_err}")
+            from auth.firebase_service import get_google_access_token_for_agent
+            access_token = await get_google_access_token_for_agent(agent_id)
+            
+            if access_token:
+                logger.info(f"[{tool_name}] Retrieved access token from Firebase for agent: {agent_id}")
+            else:
+                logger.warning(f"[{tool_name}] No access token found in Firebase for agent: {agent_id}")
+                
+        except Exception as e:
+            logger.error(f"[{tool_name}] Error getting access token from Firebase for agent {agent_id}: {e}")
+    
+    if not access_token:
+        if agent_id:
+            error_msg = (
+                f"[{tool_name}] No Google access token found for agent '{agent_id}' (email: '{actual_email}'). "
+                f"Please ensure the agent exists in Firebase and has valid Google credentials."
+            )
+        else:
+            error_msg = (
+                f"[{tool_name}] No Google access token found for user '{user_google_email}'. "
+                f"Please provide user_google_email in format: 'agent_id:email@domain.com' "
+                f"where agent_id is your Blueprint agent ID."
+            )
+        logger.warning(error_msg)
+        raise GoogleAuthenticationError(error_msg)
 
-    # Re-evaluate validity after potential refresh. If still invalid (or no creds),
-    # fall back to the interactive flow.
-    if not credentials or not credentials.valid:
-        logger.warning(
-            f"[{tool_name}] No valid credentials available for '{user_google_email}'. Initiating OAuth flow."
-        )
+    # Create credentials from the access token
+    try:
+        credentials = _create_credentials_from_access_token(access_token)
+        logger.info(f"[{tool_name}] Created credentials from access token for user: {actual_email}")
+    except Exception as e:
+        error_msg = f"[{tool_name}] Failed to create credentials from access token: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        raise GoogleAuthenticationError(error_msg)
 
-        # Import here to avoid circular import
-        from core.server import get_oauth_redirect_uri_for_current_mode
-
-        redirect_uri = get_oauth_redirect_uri_for_current_mode()
-
-        auth_response = await start_auth_flow(
-            mcp_session_id=None,
-            user_google_email=user_google_email,
-            service_name=f"Google {service_name.title()}",
-            redirect_uri=redirect_uri,
-        )
-
-        raise GoogleAuthenticationError(auth_response)
-
+    # Build the Google service
     try:
         service = build(service_name, version, credentials=credentials)
-        log_user_email = user_google_email
-
-        # Try to get email from credentials if needed for validation
-        if credentials and credentials.id_token:
-            try:
-                # Decode without verification (just to get email for logging)
-                decoded_token = jwt.decode(
-                    credentials.id_token, options={"verify_signature": False}
-                )
-                token_email = decoded_token.get("email")
-                if token_email:
-                    log_user_email = token_email
-                    logger.info(f"[{tool_name}] Token email: {token_email}")
-            except Exception as e:
-                logger.debug(f"[{tool_name}] Could not decode id_token: {e}")
-
         logger.info(
-            f"[{tool_name}] Successfully authenticated {service_name} service for user: {log_user_email}"
+            f"[{tool_name}] Successfully authenticated {service_name} service for user: {actual_email}"
         )
-        return service, log_user_email
+        return service, actual_email
 
     except Exception as e:
         error_msg = f"[{tool_name}] Failed to build {service_name} service: {str(e)}"

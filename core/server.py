@@ -63,11 +63,20 @@ _current_transport_mode = "stdio"  # Default to stdio
 
 # Basic MCP server instance
 server = FastMCP(
-    name="google_workspace",
-    server_url=f"{WORKSPACE_MCP_BASE_URI}:{WORKSPACE_MCP_PORT}/mcp",
-    port=WORKSPACE_MCP_PORT,
-    host="0.0.0.0"
+    name="google_workspace"
 )
+
+# Configure server for Cloud Run deployment
+if hasattr(server, '_app'):
+    # Configure the underlying FastAPI app to listen on all interfaces
+    import os
+    port = int(os.getenv("PORT", WORKSPACE_MCP_PORT))
+    # The actual host/port configuration will be handled by the uvicorn server
+    # that FastMCP uses internally
+
+# Setup Blueprint auth middleware to extract agent credentials and fetch Google tokens
+# Note: Middleware will be set up after server initialization in main.py
+logger.info("Blueprint auth middleware will be configured after server initialization")
 
 def set_transport_mode(mode: str):
     """Set the current transport mode for OAuth callback handling."""

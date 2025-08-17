@@ -89,6 +89,27 @@ def main():
             os.environ[env_var] = value
             logger.debug(f"Credential arg '{key}' mapped → {env_var}")
 
+    # Setup Blueprint authentication for stdio mode
+    if args.transport == 'stdio':
+        agent_id = os.getenv('X-Blueprint-Agent-Id')
+        if agent_id:
+            try:
+                # Initialize Firebase for stdio mode
+                from auth.firebase_service import initialize_firebase, get_google_access_token_for_agent
+                initialize_firebase()
+                
+                # Get access token and set as environment variable
+                import asyncio
+                access_token = asyncio.run(get_google_access_token_for_agent(agent_id))
+                if access_token:
+                    os.environ['GOOGLE_OAUTH_ACCESS_TOKEN'] = access_token
+                    safe_print(f"✅ Blueprint authentication configured for agent: {agent_id}")
+                else:
+                    safe_print(f"⚠️  Warning: No access token found for agent: {agent_id}")
+            except Exception as e:
+                safe_print(f"⚠️  Warning: Blueprint auth setup failed: {e}")
+                logger.warning(f"Blueprint auth setup failed: {e}")
+
     safe_print("🔧 Google Workspace MCP Server")
     safe_print("=" * 35)
     safe_print("📋 Server Information:")
@@ -181,7 +202,20 @@ def main():
         safe_print("")
 
         if args.transport == 'streamable-http':
-            # The server is already configured with port and server_url in core/server.py
+            # Setup simple auth middleware for Blueprint authentication
+            try:
+                from auth.simple_middleware import setup_simple_auth_middleware
+                app = server.streamable_http_app()
+                setup_simple_auth_middleware(app)
+                safe_print("✅ Blueprint auth middleware configured")
+            except Exception as e:
+                safe_print(f"⚠️  Warning: Could not setup auth middleware: {e}")
+                logger.warning(f"Could not setup auth middleware: {e}")
+            
+            # Configure environment variables for uvicorn
+            os.environ['HOST'] = '0.0.0.0'
+            os.environ['PORT'] = str(port)
+            # FastMCP handles host and port configuration internally
             server.run(transport="streamable-http")
         else:
             server.run()

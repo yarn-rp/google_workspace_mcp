@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "google-workspace": {
+      "command": "uv",
+      "args": [
+        "run", 
+        "main.py", 
+        "--transport", 
+        "stdio"
+      ],
+      "cwd": "/Users/yan.rodriguez/Documents/projects/blueprint/mcp-servers/google_workspace_mcp",
+      "env": {
+        "X-Blueprint-Agent-Id": "bea33dad-9b5b-4fe1-8d45-634085aa5771"
+      }
+    }
+  }
+}
