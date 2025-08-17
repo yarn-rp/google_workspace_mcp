@@ -24,12 +24,17 @@ logger = logging.getLogger(__name__)
 @require_google_service("drive", "drive_read")
 async def search_docs(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     query: str,
     page_size: int = 10,
 ) -> str:
     """
     Searches for Google Docs by name using Drive API (mimeType filter).
+
+    Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
+        user_google_email (str): The user's Google email address. Required.
 
     Returns:
         str: A formatted list of Google Docs matching the search query.
@@ -161,12 +166,17 @@ async def get_doc_content(
 @require_google_service("drive", "drive_read")
 async def list_docs_in_folder(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     folder_id: str = 'root',
     page_size: int = 100
 ) -> str:
     """
     Lists Google Docs within a specific Drive folder.
+
+    Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
+        user_google_email (str): The user's Google email address. Required.
 
     Returns:
         str: A formatted list of Google Docs in the specified folder.
@@ -193,12 +203,17 @@ async def list_docs_in_folder(
 @require_google_service("docs", "docs_write")
 async def create_doc(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     title: str,
     content: str = '',
 ) -> str:
     """
     Creates a new Google Doc and optionally inserts initial content.
+
+    Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
+        user_google_email (str): The user's Google email address. Required.
 
     Returns:
         str: Confirmation message with document ID and link.

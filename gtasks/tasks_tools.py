@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 @handle_http_errors("list_task_lists")
 async def list_task_lists(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     max_results: Optional[int] = None,
     page_token: Optional[str] = None
@@ -31,6 +32,7 @@ async def list_task_lists(
     List all task lists for the user.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         max_results (Optional[int]): Maximum number of task lists to return (default: 1000, max: 1000).
         page_token (Optional[str]): Token for pagination.
@@ -83,6 +85,7 @@ async def list_task_lists(
 @handle_http_errors("get_task_list")
 async def get_task_list(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     task_list_id: str
 ) -> str:
@@ -90,6 +93,7 @@ async def get_task_list(
     Get details of a specific task list.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         task_list_id (str): The ID of the task list to retrieve.
 
@@ -127,6 +131,7 @@ async def get_task_list(
 @handle_http_errors("create_task_list")
 async def create_task_list(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     title: str
 ) -> str:
@@ -134,6 +139,7 @@ async def create_task_list(
     Create a new task list.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         title (str): The title of the new task list.
 
@@ -175,6 +181,7 @@ async def create_task_list(
 @handle_http_errors("update_task_list")
 async def update_task_list(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     task_list_id: str,
     title: str
@@ -183,6 +190,7 @@ async def update_task_list(
     Update an existing task list.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         task_list_id (str): The ID of the task list to update.
         title (str): The new title for the task list.
@@ -225,6 +233,7 @@ async def update_task_list(
 @handle_http_errors("delete_task_list")
 async def delete_task_list(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     task_list_id: str
 ) -> str:
@@ -232,6 +241,7 @@ async def delete_task_list(
     Delete a task list. Note: This will also delete all tasks in the list.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         task_list_id (str): The ID of the task list to delete.
 
@@ -265,6 +275,7 @@ async def delete_task_list(
 @handle_http_errors("list_tasks")
 async def list_tasks(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     task_list_id: str,
     max_results: Optional[int] = None,
@@ -283,6 +294,7 @@ async def list_tasks(
     List all tasks in a specific task list.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         task_list_id (str): The ID of the task list to retrieve tasks from.
         max_results (Optional[int]): Maximum number of tasks to return (default: 20, max: 100).
@@ -371,6 +383,7 @@ async def list_tasks(
 @handle_http_errors("get_task")
 async def get_task(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     task_list_id: str,
     task_id: str
@@ -379,6 +392,7 @@ async def get_task(
     Get details of a specific task.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         task_list_id (str): The ID of the task list containing the task.
         task_id (str): The ID of the task to retrieve.
@@ -432,6 +446,7 @@ async def get_task(
 @handle_http_errors("create_task")
 async def create_task(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     task_list_id: str,
     title: str,
@@ -444,6 +459,7 @@ async def create_task(
     Create a new task in a task list.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         task_list_id (str): The ID of the task list to create the task in.
         title (str): The title of the task.
@@ -507,6 +523,7 @@ async def create_task(
 @handle_http_errors("update_task")
 async def update_task(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     task_list_id: str,
     task_id: str,
@@ -519,6 +536,7 @@ async def update_task(
     Update an existing task.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         task_list_id (str): The ID of the task list containing the task.
         task_id (str): The ID of the task to update.
@@ -589,6 +607,7 @@ async def update_task(
 @handle_http_errors("delete_task")
 async def delete_task(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     task_list_id: str,
     task_id: str
@@ -597,6 +616,7 @@ async def delete_task(
     Delete a task from a task list.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         task_list_id (str): The ID of the task list containing the task.
         task_id (str): The ID of the task to delete.
@@ -631,6 +651,7 @@ async def delete_task(
 @handle_http_errors("move_task")
 async def move_task(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     task_list_id: str,
     task_id: str,
@@ -642,6 +663,7 @@ async def move_task(
     Move a task to a different position or parent within the same list, or to a different list.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         task_list_id (str): The ID of the current task list containing the task.
         task_id (str): The ID of the task to move.
@@ -710,6 +732,7 @@ async def move_task(
 @handle_http_errors("clear_completed_tasks")
 async def clear_completed_tasks(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     task_list_id: str
 ) -> str:
@@ -717,6 +740,7 @@ async def clear_completed_tasks(
     Clear all completed tasks from a task list. The tasks will be marked as hidden.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         task_list_id (str): The ID of the task list to clear completed tasks from.
 

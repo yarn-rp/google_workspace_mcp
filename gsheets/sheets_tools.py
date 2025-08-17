@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 @require_google_service("drive", "drive_read")
 async def list_spreadsheets(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     max_results: int = 25,
 ) -> str:
@@ -32,6 +33,7 @@ async def list_spreadsheets(
     Lists spreadsheets from Google Drive that the user has access to.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         max_results (int): Maximum number of spreadsheets to return. Defaults to 25.
 
@@ -74,6 +76,7 @@ async def list_spreadsheets(
 @require_google_service("sheets", "sheets_read")
 async def get_spreadsheet_info(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     spreadsheet_id: str,
 ) -> str:
@@ -81,6 +84,7 @@ async def get_spreadsheet_info(
     Gets information about a specific spreadsheet including its sheets.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         spreadsheet_id (str): The ID of the spreadsheet to get info for. Required.
 
@@ -124,6 +128,7 @@ async def get_spreadsheet_info(
 @require_google_service("sheets", "sheets_read")
 async def read_sheet_values(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     spreadsheet_id: str,
     range_name: str = "A1:Z1000",
@@ -132,6 +137,7 @@ async def read_sheet_values(
     Reads values from a specific range in a Google Sheet.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         spreadsheet_id (str): The ID of the spreadsheet. Required.
         range_name (str): The range to read (e.g., "Sheet1!A1:D10", "A1:D10"). Defaults to "A1:Z1000".
@@ -174,6 +180,7 @@ async def read_sheet_values(
 @require_google_service("sheets", "sheets_write")
 async def modify_sheet_values(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     spreadsheet_id: str,
     range_name: str,
@@ -185,6 +192,7 @@ async def modify_sheet_values(
     Modifies values in a specific range of a Google Sheet - can write, update, or clear values.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         spreadsheet_id (str): The ID of the spreadsheet. Required.
         range_name (str): The range to modify (e.g., "Sheet1!A1:D10", "A1:D10"). Required.
@@ -245,6 +253,7 @@ async def modify_sheet_values(
 @require_google_service("sheets", "sheets_write")
 async def create_spreadsheet(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     title: str,
     sheet_names: Optional[List[str]] = None,
@@ -253,6 +262,7 @@ async def create_spreadsheet(
     Creates a new Google Spreadsheet.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         title (str): The title of the new spreadsheet. Required.
         sheet_names (Optional[List[str]]): List of sheet names to create. If not provided, creates one sheet with default name.
@@ -294,6 +304,7 @@ async def create_spreadsheet(
 @require_google_service("sheets", "sheets_write")
 async def create_sheet(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     spreadsheet_id: str,
     sheet_name: str,
@@ -302,6 +313,7 @@ async def create_sheet(
     Creates a new sheet within an existing spreadsheet.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         spreadsheet_id (str): The ID of the spreadsheet. Required.
         sheet_name (str): The name of the new sheet. Required.

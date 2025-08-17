@@ -80,6 +80,7 @@ def _build_drive_list_params(
 @require_google_service("drive", "drive_read")
 async def search_drive_files(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     query: str,
     page_size: int = 10,
@@ -91,6 +92,7 @@ async def search_drive_files(
     Searches for files and folders within a user's Google Drive, including shared drives.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         query (str): The search query string. Supports Google Drive search operators.
         page_size (int): The maximum number of files to return. Defaults to 10.
@@ -147,6 +149,7 @@ async def search_drive_files(
 @require_google_service("drive", "drive_read")
 async def get_drive_file_content(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     file_id: str,
 ) -> str:
@@ -159,7 +162,8 @@ async def get_drive_file_content(
     • Any other file → downloaded; tries UTF-8 decode, else notes binary.
 
     Args:
-        user_google_email: The user’s Google email address.
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
+        user_google_email: The user's Google email address.
         file_id: Drive file ID.
 
     Returns:
@@ -237,6 +241,7 @@ async def get_drive_file_content(
 @require_google_service("drive", "drive_read")
 async def list_drive_items(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     folder_id: str = 'root',
     page_size: int = 100,
@@ -250,6 +255,7 @@ async def list_drive_items(
     If `drive_id` is not specified, lists items from user's "My Drive" and accessible shared drives (if `include_items_from_all_drives` is True).
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         folder_id (str): The ID of the Google Drive folder. Defaults to 'root'. For a shared drive, this can be the shared drive's ID to list its root, or a folder ID within that shared drive.
         page_size (int): The maximum number of items to return. Defaults to 100.
@@ -293,6 +299,7 @@ async def list_drive_items(
 @require_google_service("drive", "drive_file")
 async def create_drive_file(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     file_name: str,
     content: Optional[str] = None,  # Now explicitly Optional
@@ -305,6 +312,7 @@ async def create_drive_file(
     Accepts either direct content or a fileUrl to fetch the content from.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         file_name (str): The name for the new file.
         content (Optional[str]): If provided, the content to write to the file.

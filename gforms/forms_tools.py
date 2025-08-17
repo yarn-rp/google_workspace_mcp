@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 @require_google_service("forms", "forms")
 async def create_form(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     title: str,
     description: Optional[str] = None,
@@ -31,6 +32,7 @@ async def create_form(
     Create a new form using the title given in the provided form message in the request.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         title (str): The title of the form.
         description (Optional[str]): The description of the form.
@@ -71,6 +73,7 @@ async def create_form(
 @require_google_service("forms", "forms")
 async def get_form(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     form_id: str
 ) -> str:
@@ -78,6 +81,7 @@ async def get_form(
     Get a form.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         form_id (str): The ID of the form to retrieve.
 
@@ -127,6 +131,7 @@ async def get_form(
 @require_google_service("forms", "forms")
 async def set_publish_settings(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     form_id: str,
     publish_as_template: bool = False,
@@ -136,6 +141,7 @@ async def set_publish_settings(
     Updates the publish settings of a form.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         form_id (str): The ID of the form to update publish settings for.
         publish_as_template (bool): Whether to publish as a template. Defaults to False.
@@ -165,6 +171,7 @@ async def set_publish_settings(
 @require_google_service("forms", "forms")
 async def get_form_response(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     form_id: str,
     response_id: str
@@ -173,6 +180,7 @@ async def get_form_response(
     Get one response from the form.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         form_id (str): The ID of the form.
         response_id (str): The ID of the response to retrieve.
@@ -219,6 +227,7 @@ async def get_form_response(
 @require_google_service("forms", "forms")
 async def list_form_responses(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     form_id: str,
     page_size: int = 10,
@@ -228,6 +237,7 @@ async def list_form_responses(
     List a form's responses.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         form_id (str): The ID of the form.
         page_size (int): Maximum number of responses to return. Defaults to 10.

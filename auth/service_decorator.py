@@ -219,15 +219,21 @@ def require_google_service(
             # Note: `args` and `kwargs` are now the arguments for the *wrapper*,
             # which does not include 'service'.
 
-            # Extract user_google_email from the arguments passed to the wrapper
+            # Extract user_google_email and blueprint_agent_id from the arguments passed to the wrapper
             bound_args = wrapper_sig.bind(*args, **kwargs)
             bound_args.apply_defaults()
             user_google_email = bound_args.arguments.get('user_google_email')
+            blueprint_agent_id = bound_args.arguments.get('blueprint_agent_id')
 
             if not user_google_email:
                 # This should ideally not be reached if 'user_google_email' is a required parameter
                 # in the function signature, but it's a good safeguard.
                 raise Exception("'user_google_email' parameter is required but was not found.")
+            
+            if not blueprint_agent_id:
+                # This should ideally not be reached if 'blueprint_agent_id' is a required parameter
+                # in the function signature, but it's a good safeguard.
+                raise Exception("'blueprint_agent_id' parameter is required but was not found.")
 
             # Get service configuration from the decorator's arguments
             if service_type not in SERVICE_CONFIGS:
@@ -257,6 +263,7 @@ def require_google_service(
                         service_name=service_name,
                         version=service_version,
                         tool_name=tool_name,
+                        blueprint_agent_id=blueprint_agent_id,
                         user_google_email=user_google_email,
                         required_scopes=resolved_scopes,
                     )

@@ -22,12 +22,17 @@ logger = logging.getLogger(__name__)
 @handle_http_errors("list_spaces")
 async def list_spaces(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     page_size: int = 100,
     space_type: str = "all"  # "all", "room", "dm"
 ) -> str:
     """
     Lists Google Chat spaces (rooms and direct messages) accessible to the user.
+
+    Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
+        user_google_email (str): The user's Google email address. Required.
 
     Returns:
         str: A formatted list of Google Chat spaces accessible to the user.
@@ -67,6 +72,7 @@ async def list_spaces(
 @handle_http_errors("get_messages")
 async def get_messages(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     space_id: str,
     page_size: int = 50,
@@ -74,6 +80,10 @@ async def get_messages(
 ) -> str:
     """
     Retrieves messages from a Google Chat space.
+
+    Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
+        user_google_email (str): The user's Google email address. Required.
 
     Returns:
         str: Formatted messages from the specified space.
@@ -117,6 +127,7 @@ async def get_messages(
 @handle_http_errors("send_message")
 async def send_message(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     space_id: str,
     message_text: str,
@@ -124,6 +135,10 @@ async def send_message(
 ) -> str:
     """
     Sends a message to a Google Chat space.
+
+    Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
+        user_google_email (str): The user's Google email address. Required.
 
     Returns:
         str: Confirmation message with sent message details.
@@ -158,6 +173,7 @@ async def send_message(
 @handle_http_errors("search_messages")
 async def search_messages(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     query: str,
     space_id: Optional[str] = None,
@@ -165,6 +181,10 @@ async def search_messages(
 ) -> str:
     """
     Searches for messages in Google Chat spaces by text content.
+
+    Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
+        user_google_email (str): The user's Google email address. Required.
 
     Returns:
         str: A formatted list of messages matching the search query.

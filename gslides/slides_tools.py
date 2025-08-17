@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 @require_google_service("slides", "slides")
 async def create_presentation(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     title: str = "Untitled Presentation"
 ) -> str:
@@ -31,6 +32,7 @@ async def create_presentation(
     Create a new Google Slides presentation.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         title (str): The title for the new presentation. Defaults to "Untitled Presentation".
 
@@ -65,6 +67,7 @@ async def create_presentation(
 @require_google_service("slides", "slides_read")
 async def get_presentation(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     presentation_id: str
 ) -> str:
@@ -72,6 +75,7 @@ async def get_presentation(
     Get details about a Google Slides presentation.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         presentation_id (str): The ID of the presentation to retrieve.
 
@@ -113,6 +117,7 @@ Slides Breakdown:
 @require_google_service("slides", "slides")
 async def batch_update_presentation(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     presentation_id: str,
     requests: List[Dict[str, Any]]
@@ -121,6 +126,7 @@ async def batch_update_presentation(
     Apply batch updates to a Google Slides presentation.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         presentation_id (str): The ID of the presentation to update.
         requests (List[Dict[str, Any]]): List of update requests to apply.
@@ -170,6 +176,7 @@ async def batch_update_presentation(
 @require_google_service("slides", "slides_read")
 async def get_page(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     presentation_id: str,
     page_object_id: str
@@ -178,6 +185,7 @@ async def get_page(
     Get details about a specific page (slide) in a presentation.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         presentation_id (str): The ID of the presentation.
         page_object_id (str): The object ID of the page/slide to retrieve.
@@ -232,6 +240,7 @@ Page Elements:
 @require_google_service("slides", "slides_read")
 async def get_page_thumbnail(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     presentation_id: str,
     page_object_id: str,
@@ -241,6 +250,7 @@ async def get_page_thumbnail(
     Generate a thumbnail URL for a specific page (slide) in a presentation.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         presentation_id (str): The ID of the presentation.
         page_object_id (str): The object ID of the page/slide.

@@ -897,7 +897,8 @@ async def get_authenticated_google_service(
     service_name: str,  # "gmail", "calendar", "drive", "docs"
     version: str,  # "v1", "v3"
     tool_name: str,  # For logging/debugging
-    user_google_email: str,  # Required - no more Optional
+    blueprint_agent_id: str,  # Blueprint agent ID to get credentials from Firebase
+    user_google_email: str,  # User's Google email address
     required_scopes: List[str],  # Note: scopes are no longer validated since token comes pre-authorized
 ) -> tuple[Any, str]:
     """
@@ -905,16 +906,16 @@ async def get_authenticated_google_service(
     Gets credentials from Blueprint agent via Firebase and returns (service, user_email) on success.
 
     The authentication flow:
-    1. Middleware extracts X-Blueprint-Agent-Id from request headers
-    2. Middleware queries Firebase to get the agent's Google access token
-    3. Middleware sets the access token in request context
-    4. This function retrieves the token from context and creates Google service
+    1. Tool receives blueprint_agent_id as parameter from Cursor
+    2. This function queries Firebase to get the agent's Google access token
+    3. Creates Google service using the retrieved credentials
 
     Args:
         service_name: The Google service name ("gmail", "calendar", "drive", "docs")
         version: The API version ("v1", "v3", etc.)
         tool_name: The name of the calling tool (for logging/debugging)
-        user_google_email: The user's Google email address (required)
+        blueprint_agent_id: The Blueprint agent ID to get credentials from Firebase
+        user_google_email: The user's Google email address
         required_scopes: List of required OAuth scopes (informational only - not validated)
 
     Returns:
@@ -924,66 +925,44 @@ async def get_authenticated_google_service(
         GoogleAuthenticationError: When authentication is required or fails
     """
     logger.info(
-        f"[{tool_name}] Attempting to get authenticated {service_name} service. Email: '{user_google_email}'"
+        f"[{tool_name}] Attempting to get authenticated {service_name} service for Blueprint agent: '{blueprint_agent_id}'"
     )
+
+    # Validate blueprint_agent_id
+    if not blueprint_agent_id or not blueprint_agent_id.strip():
+        error_msg = f"[{tool_name}] No valid 'blueprint_agent_id' provided. Please provide a valid Blueprint agent ID."
+        logger.warning(error_msg)
+        raise GoogleAuthenticationError(error_msg)
 
     # Validate email format
     if not user_google_email or "@" not in user_google_email:
-        error_msg = f"Authentication required for {tool_name}. No valid 'user_google_email' provided. Please provide a valid Google email address."
-        logger.info(f"[{tool_name}] {error_msg}")
+        error_msg = f"[{tool_name}] No valid 'user_google_email' provided. Please provide a valid Google email address."
+        logger.warning(error_msg)
         raise GoogleAuthenticationError(error_msg)
 
-    # Check if user_google_email contains agent ID pattern (agent_id:email@domain.com)
-    agent_id = None
-    actual_email = user_google_email
-    
-    if ':' in user_google_email and '@' in user_google_email:
-        parts = user_google_email.split(':', 1)
-        if len(parts) == 2:
-            potential_agent_id = parts[0].strip()
-            potential_email = parts[1].strip()
-            # Basic UUID validation (36 chars with hyphens)
-            if len(potential_agent_id) == 36 and potential_agent_id.count('-') == 4 and '@' in potential_email:
-                agent_id = potential_agent_id
-                actual_email = potential_email
-                logger.info(f"[{tool_name}] Extracted agent ID: {agent_id}, email: {actual_email}")
-
-    # Get access token from headers/context first
-    access_token = _get_access_token_from_headers()
-    
-    # If no token in headers/context, try to get it from Firebase using agent ID
-    if not access_token and agent_id:
-        try:
-            from auth.firebase_service import get_google_access_token_for_agent
-            access_token = await get_google_access_token_for_agent(agent_id)
+    # Get access token directly from Firebase using blueprint_agent_id
+    try:
+        from auth.firebase_service import get_google_access_token_for_agent
+        access_token = await get_google_access_token_for_agent(blueprint_agent_id)
+        
+        if not access_token:
+            error_msg = f"[{tool_name}] No Google access token found for Blueprint agent '{blueprint_agent_id}'. Please ensure the agent exists in Firebase and has valid Google credentials."
+            logger.warning(error_msg)
+            raise GoogleAuthenticationError(error_msg)
             
-            if access_token:
-                logger.info(f"[{tool_name}] Retrieved access token from Firebase for agent: {agent_id}")
-            else:
-                logger.warning(f"[{tool_name}] No access token found in Firebase for agent: {agent_id}")
-                
-        except Exception as e:
-            logger.error(f"[{tool_name}] Error getting access token from Firebase for agent {agent_id}: {e}")
-    
-    if not access_token:
-        if agent_id:
-            error_msg = (
-                f"[{tool_name}] No Google access token found for agent '{agent_id}' (email: '{actual_email}'). "
-                f"Please ensure the agent exists in Firebase and has valid Google credentials."
-            )
-        else:
-            error_msg = (
-                f"[{tool_name}] No Google access token found for user '{user_google_email}'. "
-                f"Please provide user_google_email in format: 'agent_id:email@domain.com' "
-                f"where agent_id is your Blueprint agent ID."
-            )
-        logger.warning(error_msg)
+        logger.info(f"[{tool_name}] Successfully retrieved access token from Firebase for agent: '{blueprint_agent_id}'")
+        
+    except Exception as e:
+        if isinstance(e, GoogleAuthenticationError):
+            raise
+        error_msg = f"[{tool_name}] Failed to get access token for Blueprint agent '{blueprint_agent_id}': {str(e)}"
+        logger.error(error_msg)
         raise GoogleAuthenticationError(error_msg)
 
     # Create credentials from the access token
     try:
         credentials = _create_credentials_from_access_token(access_token)
-        logger.info(f"[{tool_name}] Created credentials from access token for user: {actual_email}")
+        logger.info(f"[{tool_name}] Created credentials from access token for user: {user_google_email}")
     except Exception as e:
         error_msg = f"[{tool_name}] Failed to create credentials from access token: {str(e)}"
         logger.error(error_msg, exc_info=True)
@@ -993,9 +972,9 @@ async def get_authenticated_google_service(
     try:
         service = build(service_name, version, credentials=credentials)
         logger.info(
-            f"[{tool_name}] Successfully authenticated {service_name} service for user: {actual_email}"
+            f"[{tool_name}] Successfully authenticated {service_name} service for user: {user_google_email}"
         )
-        return service, actual_email
+        return service, user_google_email
 
     except Exception as e:
         error_msg = f"[{tool_name}] Failed to build {service_name} service: {str(e)}"

@@ -118,6 +118,7 @@ async def list_calendars(service, user_google_email: str) -> str:
 @require_google_service("calendar", "calendar_read")
 async def get_events(
     service,
+    blueprint_agent_id: str,
     user_google_email: str,
     calendar_id: str = "primary",
     time_min: Optional[str] = None,
@@ -128,6 +129,7 @@ async def get_events(
     Retrieves a list of events from a specified Google Calendar within a given time range.
 
     Args:
+        blueprint_agent_id (str): The Blueprint agent ID for authentication. Required.
         user_google_email (str): The user's Google email address. Required.
         calendar_id (str): The ID of the calendar to query. Use 'primary' for the user's primary calendar. Defaults to 'primary'. Calendar IDs can be obtained using `list_calendars`.
         time_min (Optional[str]): The start of the time range (inclusive) in RFC3339 format (e.g., '2024-05-12T10:00:00Z' or '2024-05-12'). If omitted, defaults to the current time.
