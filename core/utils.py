@@ -286,20 +286,29 @@ def handle_http_errors(tool_name: str, is_read_only: bool = False):
                         )
 
                         try:
-                            # Perform token refresh (internal helper)
-                            from auth.google_auth import refresh_auth
+                            # Perform token refresh using Firebase-stored refresh token
+                            blueprint_agent_id = kwargs.get("blueprint_agent_id")
+                            if blueprint_agent_id:
+                                from auth.firebase_service import refresh_google_access_token_for_agent
 
-                            await refresh_auth()
+                                new_access_token = await refresh_google_access_token_for_agent(blueprint_agent_id)
+                                
+                                if new_access_token:
+                                    logger.info(f"Successfully refreshed access token for agent {blueprint_agent_id}")
+                                    
+                                    # Clear cached service so that upcoming retry will build
+                                    # a fresh one using the new access token.
+                                    if "user_google_email" in kwargs:
+                                        from auth.service_decorator import clear_service_cache
+                                        clear_service_cache(kwargs["user_google_email"])
 
-                            # Clear cached service so that upcoming retry will build
-                            # a fresh one using the new access token.
-                            if "user_google_email" in kwargs:
-                                from auth.service_decorator import clear_service_cache
-
-                                clear_service_cache(kwargs["user_google_email"])
-
-                            # Retry the wrapped function on next loop iteration
-                            continue
+                                    # Retry the wrapped function on next loop iteration
+                                    continue
+                                else:
+                                    logger.warning(f"Token refresh failed for agent {blueprint_agent_id} - no new token received")
+                            else:
+                                logger.warning("No blueprint_agent_id found in kwargs for token refresh")
+                                
                         except Exception as refresh_err:
                             logger.error(
                                 f"Automatic token refresh failed in {tool_name}: {refresh_err}",

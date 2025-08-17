@@ -858,27 +858,114 @@ def _get_access_token_from_headers() -> Optional[str]:
     return None
 
 
-def _create_credentials_from_access_token(access_token: str) -> Credentials:
+class FirebaseWritebackCredentials(Credentials):
     """
-    Create a minimal Credentials object from just an access token.
+    Custom Credentials class that writes refreshed tokens back to Firebase.
+    """
     
-    Since we're not handling token refresh, we only need the access token.
-    The credentials will be marked as valid but without refresh capability.
+    def __init__(self, blueprint_agent_id: str = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.blueprint_agent_id = blueprint_agent_id
+        
+    def refresh(self, request):
+        """Override refresh to capture and save new tokens to Firebase."""
+        # Call the parent refresh method
+        super().refresh(request)
+        
+        # After successful refresh, save the new token to Firebase
+        if self.token and self.blueprint_agent_id:
+            try:
+                import asyncio
+                from auth.firebase_service import update_google_access_token_for_agent
+                
+                # Run the async function to update Firebase
+                # We need to handle this carefully since we're in a sync context
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # If we're already in an async context, we can't use asyncio.run()
+                        # Instead, we'll schedule the update as a task
+                        import concurrent.futures
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future = executor.submit(asyncio.run, update_google_access_token_for_agent(self.blueprint_agent_id, self.token))
+                            future.result(timeout=5)  # Wait up to 5 seconds
+                    else:
+                        # We can safely use asyncio.run()
+                        asyncio.run(update_google_access_token_for_agent(self.blueprint_agent_id, self.token))
+                        
+                    logger.info(f"Successfully updated access token in Firebase for agent: {self.blueprint_agent_id}")
+                except Exception as e:
+                    logger.error(f"Failed to update access token in Firebase for agent {self.blueprint_agent_id}: {e}")
+                    # Don't fail the refresh operation just because we couldn't save to Firebase
+                    
+            except ImportError as e:
+                logger.error(f"Failed to import Firebase service for token writeback: {e}")
+
+
+def _create_credentials_from_access_token(access_token: str, refresh_token: str = None, blueprint_agent_id: str = None) -> Credentials:
+    """
+    Create a Credentials object with all required fields for Google's library to handle refresh.
     
     Args:
         access_token: The Google OAuth access token
+        refresh_token: The Google OAuth refresh token from Firebase
+        blueprint_agent_id: Blueprint agent ID to get client credentials from Firebase if needed
         
     Returns:
-        A Credentials object with the access token
+        A Credentials object with all necessary fields and Firebase writeback capability
     """
-    return Credentials(
+    # Get client credentials from environment variables first
+    client_id = os.getenv('GOOGLE_OAUTH_CLIENT_ID')
+    client_secret = os.getenv('GOOGLE_OAUTH_CLIENT_SECRET')
+    token_uri = os.getenv('GOOGLE_OAUTH_TOKEN_URI', 'https://oauth2.googleapis.com/token')
+    
+    logger.info(f"Creating credentials with all required fields")
+    logger.info(f"Client ID from env: {'SET (' + client_id[:10] + '...)' if client_id else 'NOT SET'}")
+    logger.info(f"Client Secret from env: {'SET (' + client_secret[:10] + '...)' if client_secret else 'NOT SET'}")
+    logger.info(f"Token URI: {token_uri}")
+    logger.info(f"Refresh token from Firebase: {'SET (' + refresh_token[:10] + '...)' if refresh_token else 'NOT SET'}")
+    
+    # If client credentials are missing from environment, try to get them from Firebase
+    if (not client_id or not client_secret) and blueprint_agent_id:
+        logger.info("Client credentials missing from environment, trying Firebase as fallback...")
+        try:
+            import asyncio
+            from auth.firebase_service import get_agent_authenticators, extract_oauth_client_credentials_from_authenticators
+            
+            # Get authenticators from Firebase
+            authenticators = asyncio.run(get_agent_authenticators(blueprint_agent_id))
+            if authenticators:
+                firebase_client_id, firebase_client_secret = extract_oauth_client_credentials_from_authenticators(authenticators)
+                
+                if firebase_client_id and not client_id:
+                    client_id = firebase_client_id
+                    logger.info(f"Using client_id from Firebase: {client_id[:10]}...")
+                
+                if firebase_client_secret and not client_secret:
+                    client_secret = firebase_client_secret
+                    logger.info(f"Using client_secret from Firebase: {client_secret[:10]}...")
+            else:
+                logger.warning(f"No authenticators found in Firebase for agent: {blueprint_agent_id}")
+                
+        except Exception as e:
+            logger.warning(f"Failed to get client credentials from Firebase: {e}")
+    
+    if not client_id or not client_secret:
+        logger.error("CRITICAL: client_id and client_secret are required for token refresh but are missing")
+        logger.error("Please ensure GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET are set as environment variables")
+        logger.error("Or store them in the Firebase authenticators collection for the agent")
+        # Still create credentials but warn that refresh won't work
+    
+    # Use our custom credentials class that writes back to Firebase on refresh
+    return FirebaseWritebackCredentials(
+        blueprint_agent_id=blueprint_agent_id,
         token=access_token,
-        refresh_token=None,  # No refresh capability
-        token_uri=None,      # Not needed for non-refreshable tokens
-        client_id=None,      # Not needed for non-refreshable tokens
-        client_secret=None,  # Not needed for non-refreshable tokens
-        scopes=None,         # Will be validated by the API calls themselves
-        expiry=None          # We assume the token is valid
+        refresh_token=refresh_token,  # Pass refresh token from Firebase
+        token_uri=token_uri,          # Use proper token URI for refresh
+        client_id=client_id,          # From environment variable or Firebase
+        client_secret=client_secret,  # From environment variable or Firebase
+        scopes=None,                  # Will be validated by the API calls themselves
+        expiry=None                   # We assume the token is valid initially
     )
 
 
@@ -940,10 +1027,20 @@ async def get_authenticated_google_service(
         logger.warning(error_msg)
         raise GoogleAuthenticationError(error_msg)
 
-    # Get access token directly from Firebase using blueprint_agent_id
+    # Get both access and refresh tokens from Firebase using blueprint_agent_id
     try:
-        from auth.firebase_service import get_google_access_token_for_agent
-        access_token = await get_google_access_token_for_agent(blueprint_agent_id)
+        from auth.firebase_service import get_agent_authenticators, extract_google_credentials_from_authenticators
+        
+        # Get the authenticators subcollection
+        authenticators = await get_agent_authenticators(blueprint_agent_id)
+        
+        if not authenticators:
+            error_msg = f"[{tool_name}] No authenticators found for Blueprint agent '{blueprint_agent_id}'. Please ensure the agent exists in Firebase and has valid Google credentials."
+            logger.warning(error_msg)
+            raise GoogleAuthenticationError(error_msg)
+        
+        # Extract both access and refresh tokens
+        access_token, refresh_token = extract_google_credentials_from_authenticators(authenticators)
         
         if not access_token:
             error_msg = f"[{tool_name}] No Google access token found for Blueprint agent '{blueprint_agent_id}'. Please ensure the agent exists in Firebase and has valid Google credentials."
@@ -951,6 +1048,10 @@ async def get_authenticated_google_service(
             raise GoogleAuthenticationError(error_msg)
             
         logger.info(f"[{tool_name}] Successfully retrieved access token from Firebase for agent: '{blueprint_agent_id}'")
+        if refresh_token:
+            logger.info(f"[{tool_name}] Also retrieved refresh token for automatic token refresh")
+        else:
+            logger.warning(f"[{tool_name}] No refresh token found - automatic token refresh will not be available")
         
     except Exception as e:
         if isinstance(e, GoogleAuthenticationError):
@@ -959,9 +1060,9 @@ async def get_authenticated_google_service(
         logger.error(error_msg)
         raise GoogleAuthenticationError(error_msg)
 
-    # Create credentials from the access token
+    # Create credentials from both tokens
     try:
-        credentials = _create_credentials_from_access_token(access_token)
+        credentials = _create_credentials_from_access_token(access_token, refresh_token, blueprint_agent_id)
         logger.info(f"[{tool_name}] Created credentials from access token for user: {user_google_email}")
     except Exception as e:
         error_msg = f"[{tool_name}] Failed to create credentials from access token: {str(e)}"

@@ -152,15 +152,15 @@ async def get_agent_authenticators(agent_id: str) -> Optional[Dict[str, Any]]:
         raise
 
 
-def extract_google_access_token_from_authenticators(authenticators: Dict[str, Any]) -> Optional[str]:
+def extract_google_credentials_from_authenticators(authenticators: Dict[str, Any]) -> tuple[Optional[str], Optional[str]]:
     """
-    Extract the Google access token from the authenticators subcollection.
+    Extract the Google access token and refresh token from the authenticators subcollection.
     
     Args:
         authenticators: Dictionary of authenticator documents from the subcollection
         
     Returns:
-        The Google access token if found, None otherwise
+        Tuple of (access_token, refresh_token) if found, (None, None) otherwise
     """
     try:
         # Look for Google authenticator in the subcollection
@@ -204,41 +204,94 @@ def extract_google_access_token_from_authenticators(authenticators: Dict[str, An
         
         if google_auth and found_auth_key:
             # Look for access token in various possible fields
-            token_fields = [
+            access_token = None
+            refresh_token = None
+            
+            access_token_fields = [
                 'access_token', 'accessToken', 'token', 
                 'google_access_token', 'googleAccessToken',
                 'oauth_token', 'oauthToken'
             ]
             
-            for field in token_fields:
+            refresh_token_fields = [
+                'refresh_token', 'refreshToken',
+                'google_refresh_token', 'googleRefreshToken',
+                'oauth_refresh_token', 'oauthRefreshToken'
+            ]
+            
+            # Extract access token
+            for field in access_token_fields:
                 if field in google_auth and google_auth[field]:
                     token = google_auth[field]
                     if isinstance(token, str) and token.strip():
+                        access_token = token.strip()
                         logger.info(f"Found Google access token in authenticators.{found_auth_key}.{field}")
-                        return token.strip()
+                        break
             
-            # If no direct token field, check nested structures
-            nested_paths = [
-                ['credentials', 'access_token'],
-                ['credentials', 'accessToken'],
-                ['oauth', 'access_token'],
-                ['oauth', 'accessToken'],
-                ['tokens', 'access_token'],
-                ['tokens', 'accessToken'],
-            ]
+            # Extract refresh token
+            for field in refresh_token_fields:
+                if field in google_auth and google_auth[field]:
+                    token = google_auth[field]
+                    if isinstance(token, str) and token.strip():
+                        refresh_token = token.strip()
+                        logger.info(f"Found Google refresh token in authenticators.{found_auth_key}.{field}")
+                        break
             
-            for path in nested_paths:
-                current = google_auth
-                try:
-                    for key in path:
-                        current = current[key]
-                    
-                    if current and isinstance(current, str) and current.strip():
-                        logger.info(f"Found Google access token in authenticators.{found_auth_key}.{'.'.join(path)}")
-                        return current.strip()
-                        
-                except (KeyError, TypeError):
-                    continue
+            # If no direct token fields found, check nested structures
+            if not access_token or not refresh_token:
+                nested_access_paths = [
+                    ['credentials', 'access_token'],
+                    ['credentials', 'accessToken'],
+                    ['oauth', 'access_token'],
+                    ['oauth', 'accessToken'],
+                    ['tokens', 'access_token'],
+                    ['tokens', 'accessToken'],
+                ]
+                
+                nested_refresh_paths = [
+                    ['credentials', 'refresh_token'],
+                    ['credentials', 'refreshToken'],
+                    ['oauth', 'refresh_token'],
+                    ['oauth', 'refreshToken'],
+                    ['tokens', 'refresh_token'],
+                    ['tokens', 'refreshToken'],
+                ]
+                
+                # Try to find access token in nested structures
+                if not access_token:
+                    for path in nested_access_paths:
+                        current = google_auth
+                        try:
+                            for key in path:
+                                current = current[key]
+                            
+                            if current and isinstance(current, str) and current.strip():
+                                access_token = current.strip()
+                                logger.info(f"Found Google access token in authenticators.{found_auth_key}.{'.'.join(path)}")
+                                break
+                                
+                        except (KeyError, TypeError):
+                            continue
+                
+                # Try to find refresh token in nested structures
+                if not refresh_token:
+                    for path in nested_refresh_paths:
+                        current = google_auth
+                        try:
+                            for key in path:
+                                current = current[key]
+                            
+                            if current and isinstance(current, str) and current.strip():
+                                refresh_token = current.strip()
+                                logger.info(f"Found Google refresh token in authenticators.{found_auth_key}.{'.'.join(path)}")
+                                break
+                                
+                        except (KeyError, TypeError):
+                            continue
+            
+            # Return what we found
+            if access_token or refresh_token:
+                return access_token, refresh_token
             
             # Log the structure for debugging
             logger.debug(f"Google authenticator '{found_auth_key}' structure: {list(google_auth.keys())}")
@@ -251,11 +304,173 @@ def extract_google_access_token_from_authenticators(authenticators: Dict[str, An
             if isinstance(auth_data, dict):
                 logger.debug(f"Authenticator '{auth_key}' structure: {list(auth_data.keys())}")
         
-        return None
+        return None, None
         
     except Exception as e:
-        logger.error(f"Error extracting Google access token from authenticators: {e}")
-        return None
+        logger.error(f"Error extracting Google credentials from authenticators: {e}")
+        return None, None
+
+
+def extract_oauth_client_credentials_from_authenticators(authenticators: Dict[str, Any]) -> tuple[Optional[str], Optional[str]]:
+    """
+    Extract OAuth client credentials (client_id, client_secret) from the authenticators subcollection.
+    
+    This is a fallback for when these credentials are not set as environment variables.
+    
+    Args:
+        authenticators: Dictionary of authenticator documents from the subcollection
+        
+    Returns:
+        Tuple of (client_id, client_secret) if found, (None, None) otherwise
+    """
+    try:
+        # Look for Google authenticator in the subcollection
+        google_auth = None
+        found_auth_key = None
+        
+        # Priority order: 'google' (future standard) first, then 'google-calendar' (current)
+        priority_auth_keys = [
+            'google',           # Future standard - preferred
+            'google-calendar',  # Current implementation - temporary support
+        ]
+        
+        # Try priority keys first
+        for auth_key in priority_auth_keys:
+            if auth_key in authenticators:
+                google_auth = authenticators[auth_key]
+                found_auth_key = auth_key
+                logger.debug(f"Found Google authenticator with priority key: {auth_key}")
+                break
+        
+        # Fallback: look for any key that contains 'google-calendar' or starts with 'google-calendar-'
+        if not google_auth:
+            for auth_key in authenticators.keys():
+                if auth_key.startswith('google-calendar'):
+                    google_auth = authenticators[auth_key]
+                    found_auth_key = auth_key
+                    logger.debug(f"Found Google authenticator with calendar-specific key: {auth_key}")
+                    break
+        
+        # Last fallback: any key containing 'google'
+        if not google_auth:
+            for auth_key in authenticators.keys():
+                if 'google' in auth_key.lower():
+                    google_auth = authenticators[auth_key]
+                    found_auth_key = auth_key
+                    logger.debug(f"Found Google authenticator with generic google key: {auth_key}")
+                    break
+        
+        if google_auth and found_auth_key:
+            # Look for client credentials in various possible fields
+            client_id = None
+            client_secret = None
+            
+            client_id_fields = [
+                'client_id', 'clientId', 
+                'google_client_id', 'googleClientId',
+                'oauth_client_id', 'oauthClientId'
+            ]
+            
+            client_secret_fields = [
+                'client_secret', 'clientSecret',
+                'google_client_secret', 'googleClientSecret',
+                'oauth_client_secret', 'oauthClientSecret'
+            ]
+            
+            # Extract client_id
+            for field in client_id_fields:
+                if field in google_auth and google_auth[field]:
+                    value = google_auth[field]
+                    if isinstance(value, str) and value.strip():
+                        client_id = value.strip()
+                        logger.info(f"Found OAuth client_id in authenticators.{found_auth_key}.{field}")
+                        break
+            
+            # Extract client_secret
+            for field in client_secret_fields:
+                if field in google_auth and google_auth[field]:
+                    value = google_auth[field]
+                    if isinstance(value, str) and value.strip():
+                        client_secret = value.strip()
+                        logger.info(f"Found OAuth client_secret in authenticators.{found_auth_key}.{field}")
+                        break
+            
+            # If no direct fields found, check nested structures
+            if not client_id or not client_secret:
+                nested_client_id_paths = [
+                    ['credentials', 'client_id'],
+                    ['credentials', 'clientId'],
+                    ['oauth', 'client_id'],
+                    ['oauth', 'clientId'],
+                    ['config', 'client_id'],
+                    ['config', 'clientId'],
+                ]
+                
+                nested_client_secret_paths = [
+                    ['credentials', 'client_secret'],
+                    ['credentials', 'clientSecret'],
+                    ['oauth', 'client_secret'],
+                    ['oauth', 'clientSecret'],
+                    ['config', 'client_secret'],
+                    ['config', 'clientSecret'],
+                ]
+                
+                # Try to find client_id in nested structures
+                if not client_id:
+                    for path in nested_client_id_paths:
+                        current = google_auth
+                        try:
+                            for key in path:
+                                current = current[key]
+                            
+                            if current and isinstance(current, str) and current.strip():
+                                client_id = current.strip()
+                                logger.info(f"Found OAuth client_id in authenticators.{found_auth_key}.{'.'.join(path)}")
+                                break
+                                
+                        except (KeyError, TypeError):
+                            continue
+                
+                # Try to find client_secret in nested structures
+                if not client_secret:
+                    for path in nested_client_secret_paths:
+                        current = google_auth
+                        try:
+                            for key in path:
+                                current = current[key]
+                            
+                            if current and isinstance(current, str) and current.strip():
+                                client_secret = current.strip()
+                                logger.info(f"Found OAuth client_secret in authenticators.{found_auth_key}.{'.'.join(path)}")
+                                break
+                                
+                        except (KeyError, TypeError):
+                            continue
+            
+            # Return what we found
+            if client_id or client_secret:
+                return client_id, client_secret
+        
+        logger.debug(f"No OAuth client credentials found in authenticators")
+        return None, None
+        
+    except Exception as e:
+        logger.error(f"Error extracting OAuth client credentials from authenticators: {e}")
+        return None, None
+
+
+def extract_google_access_token_from_authenticators(authenticators: Dict[str, Any]) -> Optional[str]:
+    """
+    Backward compatibility function that extracts only the access token.
+    
+    Args:
+        authenticators: Dictionary of authenticator documents from the subcollection
+        
+    Returns:
+        The Google access token if found, None otherwise
+    """
+    access_token, _ = extract_google_credentials_from_authenticators(authenticators)
+    return access_token
 
 
 def extract_google_access_token(agent_data: Dict[str, Any]) -> Optional[str]:
@@ -452,7 +667,7 @@ async def get_google_credentials_for_agent(agent_id: str) -> tuple[Optional[str]
             logger.warning(f"No Google access token found in authenticators for agent: {agent_id}")
             
             # Fallback: try to extract from main agent document (legacy support)
-            access_token = extract_google_access_token_from_agent_data(agent_data)
+            access_token = extract_google_access_token(agent_data)
             
             if access_token:
                 logger.info(f"Successfully retrieved Google access token from agent data for agent: {agent_id}")
@@ -464,6 +679,127 @@ async def get_google_credentials_for_agent(agent_id: str) -> tuple[Optional[str]
     except Exception as e:
         logger.error(f"Error getting Google credentials for agent {agent_id}: {e}")
         return None, None
+
+
+async def refresh_google_access_token_for_agent(agent_id: str) -> Optional[str]:
+    """
+    Refresh the Google access token for a Blueprint agent using the stored refresh token.
+    
+    This function:
+    1. Retrieves the agent's refresh token from Firebase
+    2. Uses it to get a new access token from Google
+    3. Updates the stored access token in Firebase
+    4. Returns the new access token
+    
+    Args:
+        agent_id: The Blueprint agent ID
+        
+    Returns:
+        The new Google access token if refresh succeeds, None otherwise
+    """
+    try:
+        # Get the authenticators subcollection
+        authenticators = await get_agent_authenticators(agent_id)
+        
+        if not authenticators:
+            logger.warning(f"No authenticators found for agent: {agent_id}")
+            return None
+        
+        # Extract both access and refresh tokens
+        access_token, refresh_token = extract_google_credentials_from_authenticators(authenticators)
+        
+        if not refresh_token:
+            logger.warning(f"No refresh token found for agent: {agent_id}")
+            return None
+        
+        # Import Google auth libraries
+        from google.auth.transport.requests import Request
+        from google.oauth2.credentials import Credentials
+        from google.auth.exceptions import RefreshError
+        
+        # Create credentials object with refresh token
+        credentials = Credentials(
+            token=access_token,  # Current access token (may be expired)
+            refresh_token=refresh_token,
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=None,  # Will be extracted from refresh token
+            client_secret=None  # Will be extracted from refresh token
+        )
+        
+        # Attempt to refresh the token
+        try:
+            credentials.refresh(Request())
+            new_access_token = credentials.token
+            
+            if new_access_token:
+                # Update the access token in Firebase
+                await update_google_access_token_for_agent(agent_id, new_access_token)
+                logger.info(f"Successfully refreshed access token for agent: {agent_id}")
+                return new_access_token
+            else:
+                logger.error(f"Token refresh succeeded but no new access token received for agent: {agent_id}")
+                return None
+                
+        except RefreshError as e:
+            logger.warning(f"Refresh token expired or revoked for agent {agent_id}: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error refreshing token for agent {agent_id}: {e}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Failed to refresh Google access token for agent {agent_id}: {e}")
+        return None
+
+
+async def update_google_access_token_for_agent(agent_id: str, new_access_token: str) -> bool:
+    """
+    Update the Google access token for a Blueprint agent in Firebase.
+    
+    Args:
+        agent_id: The Blueprint agent ID
+        new_access_token: The new access token to store
+        
+    Returns:
+        True if update succeeds, False otherwise
+    """
+    try:
+        db = get_firestore_client()
+        
+        # Get the authenticators subcollection
+        authenticators_ref = db.collection('agents').document(agent_id).collection('authenticators')
+        
+        # Find the Google authenticator document
+        docs = authenticators_ref.stream()
+        
+        google_doc_ref = None
+        for doc in docs:
+            doc_id = doc.id
+            # Check if this is a Google authenticator
+            if any(keyword in doc_id.lower() for keyword in ['google', 'calendar']):
+                google_doc_ref = authenticators_ref.document(doc_id)
+                break
+        
+        if not google_doc_ref:
+            logger.error(f"No Google authenticator document found for agent: {agent_id}")
+            return False
+        
+        # Update the access token
+        # Try multiple field names to ensure compatibility
+        update_data = {
+            'access_token': new_access_token,
+            'accessToken': new_access_token,
+            'google_access_token': new_access_token,
+            'googleAccessToken': new_access_token
+        }
+        
+        google_doc_ref.update(update_data)
+        logger.info(f"Updated access token in Firebase for agent: {agent_id}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to update access token for agent {agent_id}: {e}")
+        return False
 
 
 # Initialize Firebase when the module is imported

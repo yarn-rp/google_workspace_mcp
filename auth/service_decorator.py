@@ -162,18 +162,15 @@ def _handle_token_refresh_error(error: RefreshError, user_email: str, service_na
             f"- The token has been unused for an extended period\n"
             f"- You've changed your Google account password\n"
             f"- You've revoked access to the application\n\n"
-            f"**To resolve this, please:**\n"
-            f"1. Run `refresh_auth` to refresh your credentials for {service_display_name}\n"
-            f"2. Complete the authentication flow in your browser\n"
-            f"3. Retry your original command\n\n"
-            f"The application will automatically use the new credentials once authentication is complete."
+            f"The system will automatically attempt to refresh your credentials and retry the operation. "
+            f"If the automatic refresh fails, you may need to re-authenticate through your Blueprint agent configuration."
         )
     else:
         # Handle other types of refresh errors
         logger.error(f"Unexpected refresh error for user {user_email}: {error}")
         return (
             f"Authentication error occurred for {user_email}. "
-            f"Please try running `refresh_auth` to refresh your credentials and then retry your command."
+            f"The system will automatically attempt to refresh your credentials and retry the operation."
         )
 
 

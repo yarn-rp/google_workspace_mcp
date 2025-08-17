@@ -103,22 +103,4 @@ async def health_check(request: Request):
         "transport": _current_transport_mode
     })
 
-# --- Public tool: refresh_auth ---
-
-@server.tool()
-async def refresh_auth() -> str:
-    """Refresh Google OAuth access token using the stored refresh token (non-interactive).
-
-    Usage: Call this tool whenever an operation fails due to expired/invalid
-    credentials. It attempts to refresh the access token in-place so that
-    subsequent calls succeed without requiring any browser-based authentication.
-    """
-
-    from auth.google_auth import refresh_auth as _refresh_auth  # Lazy import to avoid cycles
-
-    try:
-        await _refresh_auth()
-        return "✅ Google OAuth access token refreshed successfully. Please retry your previous command."
-    except Exception as e:
-        logger.error("refresh_auth tool failed: %s", e, exc_info=True)
-        raise Exception(f"Failed to refresh Google auth token: {e}")
+# --- Authentication is handled internally, no public auth tools needed ---

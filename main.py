@@ -87,7 +87,14 @@ def main():
     for key, (env_var, value) in cred_env_map.items():
         if value:
             os.environ[env_var] = value
-            logger.debug(f"Credential arg '{key}' mapped → {env_var}")
+            logger.info(f"Credential arg '{key}' mapped → {env_var}")
+        else:
+            # Check if the environment variable is already set
+            existing_value = os.getenv(env_var)
+            if existing_value:
+                logger.info(f"Environment variable {env_var} already set: {'SET' if existing_value else 'NOT SET'}")
+            else:
+                logger.warning(f"Environment variable {env_var} is not set and no command line argument provided")
 
     # Setup Blueprint authentication for stdio mode
     if args.transport == 'stdio':
@@ -163,6 +170,26 @@ def main():
     safe_print(f"   🔧 Tools Enabled: {len(tools_to_import)}/{len(tool_imports)}")
     safe_print(f"   🔑 Auth Method: OAuth 2.0 with PKCE")
     safe_print(f"   📝 Log Level: {logging.getLogger().getEffectiveLevel()}")
+    
+    # Log OAuth environment variables status
+    oauth_env_vars = [
+        'GOOGLE_OAUTH_CLIENT_ID',
+        'GOOGLE_OAUTH_CLIENT_SECRET', 
+        'GOOGLE_OAUTH_ACCESS_TOKEN',
+        'GOOGLE_OAUTH_REFRESH_TOKEN',
+        'GOOGLE_OAUTH_TOKEN_URI'
+    ]
+    safe_print(f"   🔐 OAuth Environment Variables:")
+    for var in oauth_env_vars:
+        value = os.getenv(var)
+        if value:
+            # Show first 10 chars for debugging but hide full value
+            display_value = f"SET ({value[:10]}...)" if len(value) > 10 else "SET"
+            safe_print(f"      {var}: {display_value}")
+            logger.info(f"Environment variable {var}: {display_value}")
+        else:
+            safe_print(f"      {var}: NOT SET")
+            logger.warning(f"Environment variable {var}: NOT SET")
     safe_print("")
 
     # Set global single-user mode flag
