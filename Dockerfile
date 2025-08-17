@@ -35,5 +35,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 ENV HOST=0.0.0.0
 ENV PORT=8000
 
-# Command to run the application using custom server script
-CMD ["uv", "run", "start_server.py"]
+# Command to run the application using main.py with streamable-http transport and common tools
+CMD ["uv", "run", "main.py", "--transport", "streamable-http", "--tools", "gmail", "calendar", "drive", "docs", "sheets"]

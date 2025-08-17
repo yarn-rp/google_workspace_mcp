@@ -61,8 +61,6 @@ gcloud run deploy "$SERVICE" \
   --region "$REGION" \
   --allow-unauthenticated \
   --port 8000 \
-  --command "uv" \
-  --args "run,main.py,--transport,streamable-http,--tools,gmail,calendar,drive,docs,sheets" \
   --env-vars-file "$TEMP_ENV_FILE" \
   --quiet
 

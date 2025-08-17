@@ -215,8 +215,17 @@ def main():
             # Configure environment variables for uvicorn
             os.environ['HOST'] = '0.0.0.0'
             os.environ['PORT'] = str(port)
-            # FastMCP handles host and port configuration internally
-            server.run(transport="streamable-http")
+            
+            # Try to run with explicit host and port configuration
+            try:
+                import uvicorn
+                # Get the FastAPI app and run it directly with uvicorn
+                app = server.streamable_http_app()
+                uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
+            except ImportError:
+                # Fallback to FastMCP's built-in server
+                safe_print("⚠️  Warning: uvicorn not available, using FastMCP built-in server")
+                server.run(transport="streamable-http")
         else:
             server.run()
     except KeyboardInterrupt:
